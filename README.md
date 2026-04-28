@@ -25,7 +25,7 @@ targets/             # CTF-specific configs, flags, logic
 
 ## Local Build (Cerberus NixOS)
 
-Prerequisites: drop your Windows 11 ISO and virtio-win.iso into `/var/lib/libvirt/images/`
+Prerequisites: Windows 11 LTSC Eval ISO + virtio-win.iso in `~/Downloads/`
 
 ```bash
 nix build .#win11-ews-local

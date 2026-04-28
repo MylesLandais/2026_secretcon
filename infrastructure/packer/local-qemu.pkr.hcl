@@ -9,7 +9,7 @@ packer {
 
 variable "iso_url" {
   type    = string
-  default = "file:///var/lib/libvirt/images/Win11_23H2_English_x64.iso"
+  default = "file:///home/warby/Downloads/26100.1742.240906-0331.ge_release_svc_refresh_CLIENT_LTSC_EVAL_x64FRE_en-us.iso"
 }
 
 variable "iso_checksum" {
@@ -19,7 +19,7 @@ variable "iso_checksum" {
 
 variable "virtio_iso" {
   type    = string
-  default = "file:///var/lib/libvirt/images/virtio-win.iso"
+  default = "file:///home/warby/Downloads/virtio-win.iso"
 }
 
 source "qemu" "win11-ews-local" {
