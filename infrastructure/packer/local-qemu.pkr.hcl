@@ -32,7 +32,7 @@ source "qemu" "win11-ews-local" {
 
   accelerator = "kvm"
   machine_type = "q35"
-  headless    = false
+  headless    = true
 
   cpus   = 4
   memory = 8192
@@ -49,7 +49,7 @@ source "qemu" "win11-ews-local" {
 
   communicator   = "winrm"
   winrm_username = "Administrator"
-  winrm_password = "${env("WINRM_PASSWORD") == "" ? "packer" : env("WINRM_PASSWORD")}"
+  winrm_password = "packer"
   winrm_insecure = true
   winrm_use_ssl  = false
   winrm_timeout  = "30m"
