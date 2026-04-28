@@ -30,37 +30,36 @@ source "qemu" "win11-ews-local" {
   vm_name          = "win11-ews-local.qcow2"
   format           = "qcow2"
 
-  accelerator = "kvm"
+  accelerator  = "kvm"
   machine_type = "q35"
-  headless    = true
-
-  cpus   = 4
-  memory = 8192
+  headless     = true
+  cpus         = 4
+  memory       = 8192
 
   disk_size    = "80G"
   disk_interface = "virtio"
 
-  net_device = "virtio-net"
-  qemuargs = [
-    ["-netdev", "user,id=user.0,hostfwd=tcp::5985-:5985,hostfwd=tcp::3389-:3389"],
-    ["-device", "virtio-net,netdev=user.0"],
-    ["-drive", "file=${var.virtio_iso},media=cdrom,index=3"]
-  ]
-
+  net_device     = "virtio-net"
   communicator   = "winrm"
   winrm_username = "Administrator"
   winrm_password = "packer"
   winrm_insecure = true
   winrm_use_ssl  = false
-  winrm_timeout  = "30m"
+  winrm_timeout  = "60m"
 
-  shutdown_command = "shutdown /s /t 10 /f /d p:4:1 /c \"Packer Shutdown\""
-  shutdown_timeout = "30m"
+  boot_wait = "5s"
+  boot_command = [
+    "<enter>"
+  ]
+
+  floppy_files = [
+    "${path.root}/../../provisioning/autounattend.xml"
+  ]
 
   http_directory = "${path.root}/../../provisioning"
 
-  cd_files = ["${path.root}/../../provisioning/autounattend.xml"]
-  cd_label = "PACKER_AUTOINSTALL"
+  shutdown_command = "shutdown /s /t 10 /f /d p:4:1 /c \"Packer Shutdown\""
+  shutdown_timeout = "30m"
 }
 
 build {
