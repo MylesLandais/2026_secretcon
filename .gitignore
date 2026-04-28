@@ -1,0 +1,35 @@
+# Secrets
+.env
+*.pem
+*.key
+secrets/
+.sops.yaml
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Packer
+packer_cache/
+output-*/
+*.pkrvars.hcl
+!example.pkrvars.hcl
+
+# Nix
+result/
+result
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log

@@ -1,0 +1,12 @@
+<!-- Sysmon config for Wazuh ingestion -->
+<!-- Placeholder: import SwiftOnSecurity or custom OT-focused config -->
+<Sysmon schemaversion="4.90">
+  <EventFiltering>
+    <RuleGroup name="Process Create" groupRelation="or">
+      <ProcessCreate onmatch="exclude"/>
+    </RuleGroup>
+    <RuleGroup name="Network Connect" groupRelation="or">
+      <NetworkConnect onmatch="exclude"/>
+    </RuleGroup>
+  </EventFiltering>
+</Sysmon>
