@@ -27,6 +27,14 @@ targets/             # CTF-specific configs, flags, logic
 
 Prerequisites: Windows 11 LTSC Eval ISO + virtio-win.iso in `~/Downloads/`
 
+Don't have the ISO? Use Fido:
+
+```bash
+./scripts/fetch-iso.sh          # interactive
+./scripts/fetch-iso.sh "Windows 11" "23H2" "Enterprise LTSC" "English"
+```
+
+Build:
 ```bash
 nix build .#win11-ews-local
 ```
