@@ -14,7 +14,6 @@ nix develop
 infrastructure/      # IaC — Packer, Terraform, NixOS modules
 provisioning/        # Bootstrap scripts for all targets
 targets/             # CTF-specific configs, flags, logic
-docs/                # Architecture diagrams, runbooks
 ```
 
 ## Targets
@@ -24,12 +23,42 @@ docs/                # Architecture diagrams, runbooks
 | 101  | Wazuh SIEM         | 192.168.61.10   | Blue team log aggregation |
 | 102  | Win11 EWS          | 192.168.61.20   | Red team pivot target     |
 
-## Build
+## Local Build (Cerberus NixOS)
 
-Proxmox Win11 EWS image:
+Prerequisites: drop your Windows 11 ISO and virtio-win.iso into `/var/lib/libvirt/images/`
+
 ```bash
-nix build .#win11-ews-artifact
+nix build .#win11-ews-local
 ```
+
+Run the resulting qcow2:
+```bash
+./scripts/run-local-vm.sh result/win11-ews-local.qcow2
+```
+
+RDP to `localhost:3389`, WinRM on `localhost:5985`.
+
+## Proxmox Build
+
+```bash
+nix build .#win11-ews-proxmox
+```
+
+Requires `PROXMOX_URL`, `PROXMOX_TOKEN_ID`, `PROXMOX_TOKEN_SECRET`, `WINRM_PASSWORD`.
+
+## NixOS Integration
+
+Import the local VM test module into your system config:
+
+```nix
+# ~/.config/nixos/configuration.nix
+imports = [
+  # ... your existing imports
+  /home/warby/Workspace/2026_secretcon/infrastructure/nix/local-vm-test.nix
+];
+```
+
+Then `sudo nixos-rebuild switch`.
 
 ## Conventional Commits
 

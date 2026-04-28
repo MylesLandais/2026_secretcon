@@ -11,17 +11,21 @@ Set-ItemProperty `
 # .NET 3.5
 Enable-WindowsOptionalFeature -Online -FeatureName NetFx3 -All -NoRestart
 
-# Static IP (Proxmox OT VLAN 10)
+# Static IP (Proxmox OT VLAN 10) — skip if already DHCP'd (local test)
 $iface = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
-if ($iface) {
-    New-NetIPAddress `
-      -InterfaceAlias $iface.Name `
-      -IPAddress "192.168.61.20" `
-      -PrefixLength 24 `
-      -DefaultGateway "192.168.61.1" -ErrorAction SilentlyContinue
-    Set-DnsClientServerAddress `
-      -InterfaceAlias $iface.Name `
-      -ServerAddresses ("192.168.61.1","1.1.1.1") -ErrorAction SilentlyContinue
+if ($iface -and -not ($iface.IPAddress -match "192\.168\.61\.")) {
+    try {
+        New-NetIPAddress `
+          -InterfaceAlias $iface.Name `
+          -IPAddress "192.168.61.20" `
+          -PrefixLength 24 `
+          -DefaultGateway "192.168.61.1" -ErrorAction Stop
+        Set-DnsClientServerAddress `
+          -InterfaceAlias $iface.Name `
+          -ServerAddresses ("192.168.61.1","1.1.1.1") -ErrorAction Stop
+    } catch {
+        Write-Host "[!] Static IP config skipped (local test env detected)"
+    }
 }
 
 # WinRM hardening for Packer
