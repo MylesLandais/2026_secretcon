@@ -42,6 +42,14 @@ Invoke-WebRequest -Uri $sysmonUrl -OutFile $sysmonZip
 Expand-Archive -Path $sysmonZip -DestinationPath "$env:TEMP\Sysmon" -Force
 & "$env:TEMP\Sysmon\sysmon.exe" -accepteula -i C:\secretcon\sysmon-config.xml
 
+# Wazuh agent
+$WazuhManager = if ($env:WAZUH_MANAGER) { $env:WAZUH_MANAGER } else { "192.168.61.10" }
+$WazuhVersion = "4.8.0"
+$wazuhMsi = "C:\wazuh-agent-$WazuhVersion-1.msi"
+Invoke-WebRequest -Uri "https://packages.wazuh.com/4.x/windows/wazuh-agent-$WazuhVersion-1.msi" -OutFile $wazuhMsi
+Start-Process msiexec.exe -ArgumentList "/i $wazuhMsi /q WAZUH_MANAGER=$WazuhManager WAZUH_AGENT_GROUP=ews" -Wait
+Start-Service WazuhSvc
+
 # CTF user: patrick (low-priv)
 $pw = ConvertTo-SecureString "Changeme123!" -AsPlainText -Force
 New-LocalUser -Name "patrick" -Password $pw -FullName "Patrick" -Description "OT Operator"
@@ -52,5 +60,10 @@ Remove-LocalGroupMember -Group "Administrators" -Member "patrick" -ErrorAction S
 New-Item -ItemType Directory -Path "C:\secretcon" -Force
 "crit-low-priv-patrick" | Out-File -Encoding utf8 "C:\secretcon\flag_lowpriv.txt"
 
-# Wazuh agent placeholder
-Write-Host "[*] Bootstrap complete. Install Wazuh agent manually or via GPO."
+# Python + pycomm3 for ICS challenges
+$pyInstaller = "C:\python-3.12.7-amd64.exe"
+Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe" -OutFile $pyInstaller
+Start-Process $pyInstaller -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_pip=1" -Wait
+& "C:\Program Files\Python312\python.exe" -m pip install --no-warn-script-location pycomm3
+
+Write-Host "[*] Bootstrap complete."
