@@ -37,9 +37,9 @@ source "qemu" "win11-ews-local" {
   memory       = 8192
 
   disk_size    = "80G"
-  disk_interface = "virtio"
+  disk_interface = "ide"
 
-  net_device     = "virtio-net"
+  net_device     = "e1000e"
   communicator   = "winrm"
   winrm_username = "Administrator"
   winrm_password = "packer"
