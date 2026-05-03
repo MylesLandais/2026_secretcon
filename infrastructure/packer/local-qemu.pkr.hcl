@@ -9,12 +9,12 @@ packer {
 
 variable "iso_url" {
   type    = string
-  default = "file:///home/warby/Downloads/26100.1742.240906-0331.ge_release_svc_refresh_CLIENT_LTSC_EVAL_x64FRE_en-us.iso"
+  default = "file:///home/warby/Downloads/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso"
 }
 
 variable "iso_checksum" {
   type    = string
-  default = "none"
+  default = "sha256:c90a6df8997bf49e56b9673982f3e80745058723a707aef8f22998ae6479597d"
 }
 
 variable "virtio_iso" {
@@ -22,12 +22,12 @@ variable "virtio_iso" {
   default = "file:///home/warby/Downloads/virtio-win.iso"
 }
 
-source "qemu" "win11-ews-local" {
+source "qemu" "win10-ews-local" {
   iso_url      = var.iso_url
   iso_checksum = var.iso_checksum
 
-  output_directory = "output/win11-ews-local"
-  vm_name          = "win11-ews-local.qcow2"
+  output_directory = "output/win10-ews-local"
+  vm_name          = "win10-ews-local.qcow2"
   format           = "qcow2"
 
   accelerator  = "kvm"
@@ -36,46 +36,66 @@ source "qemu" "win11-ews-local" {
   cpus         = 4
   memory       = 8192
 
-  disk_size    = "80G"
+  disk_size      = "128G"
   disk_interface = "ide"
 
-  net_device     = "e1000e"
-  communicator   = "winrm"
-  winrm_username = "Administrator"
-  winrm_password = "packer"
-  winrm_insecure = true
-  winrm_use_ssl  = false
-  winrm_timeout  = "60m"
+  net_device      = "e1000e"
+  communicator    = "ssh"
+  ssh_username    = "Administrator"
+  ssh_password    = "packer"
+  ssh_private_key_file = "${path.root}/../../provisioning/ssh/packer_ed25519"
+  ssh_timeout     = "90m"
+  skip_compaction = true
 
-  boot_wait = "5s"
+  boot_wait = "3s"
   boot_command = [
-    "<enter>"
+    "<spacebar><spacebar>"
   ]
 
   floppy_files = [
     "${path.root}/../../provisioning/autounattend.xml"
   ]
 
+  cd_label = "PROVISION"
+  cd_files = [
+    "${path.root}/../../provisioning/setup-openssh.ps1",
+    "${path.root}/../../provisioning/openssh/OpenSSH-Win64.zip",
+    "${path.root}/../../provisioning/ssh/packer_ed25519.pub"
+  ]
+
   http_directory = "${path.root}/../../provisioning"
+  http_port_min  = 8888
+  http_port_max  = 8888
 
   shutdown_command = "shutdown /s /t 10 /f /d p:4:1 /c \"Packer Shutdown\""
   shutdown_timeout = "30m"
+
+  qemuargs = [
+    ["-monitor", "unix:/tmp/win10-mon.sock,server,nowait"]
+  ]
 }
 
 build {
-  name = "win11-ews-local"
-  sources = ["source.qemu.win11-ews-local"]
-
-  provisioner "powershell" {
-    script = "${path.root}/../../provisioning/powershell/bootstrap_win.ps1"
-  }
-
-  provisioner "windows-restart" {}
+  name    = "win10-ews-local"
+  sources = ["source.qemu.win10-ews-local"]
 
   provisioner "powershell" {
     inline = [
-      "Write-Host '[*] Local EWS build complete'",
-      "Get-LocalUser | Select-Object Name,Enabled"
+      "Write-Host '[*] SSH connected. Win10 LTSC build reached provisioner stage.'",
+      "Get-Service sshd | Format-List Name,Status,StartType"
+    ]
+  }
+
+  provisioner "powershell" {
+    script           = "${path.root}/../../provisioning/powershell/bootstrap_win.ps1"
+    environment_vars = ["WAZUH_MANAGER=192.168.61.10"]
+  }
+
+  provisioner "powershell" {
+    inline = [
+      "Get-Service sshd, Sysmon64, WazuhSvc | Format-Table Name, Status, StartType",
+      "& 'C:\\Program Files\\Python312\\python.exe' -c 'import pycomm3; print(pycomm3.__version__)'",
+      "Get-LocalUser | Select-Object Name, Enabled"
     ]
   }
 }

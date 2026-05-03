@@ -4,6 +4,15 @@
 *.key
 secrets/
 .sops.yaml
+provisioning/ssh/
+!provisioning/ssh/readme.md
+
+# Vendored binaries (regenerable, not source)
+provisioning/openssh/*.zip
+
+# Local agent state
+.claude/
+output/
 
 # Terraform
 *.tfstate
