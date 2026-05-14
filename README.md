@@ -91,15 +91,6 @@ bash scripts/proxmox/verify-wazuh-siem.sh
 See [docs/runbooks/deploy-wazuh.md](docs/runbooks/deploy-wazuh.md) for the
 full sequence and verification checks.
 
-## CTF OSINT note
-
-Some of what looks like a secret in this repo is not. The Win10 EWS challenge
-ships with a known-bad VNC password drawn from a public SecLists wordlist,
-and `targets/ews-win11/flag-notes.md` documents the intended kill chain. That
-content is part of the training material for SecretCon participants and is
-intentional. Real secrets (sops files, dashboard admin credentials, the
-WireGuard endpoint) live outside the repo and stay out.
-
 ## Contributing
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.

@@ -6,14 +6,25 @@ documentation, and detection coverage are especially welcome.
 
 ## Ground rules
 
-This is a CTF training environment. By design, certain credentials, IP
-ranges, and challenge spoilers live in the repo as OSINT material for
-participants of [secretconctf.com](https://secretconctf.com/). Do not file
-issues asking us to scrub them. Real production secrets (keys, sops files,
-.env, dashboard admin passwords) must never land in this repo.
+This is a CTF training environment. Some of what looks like a secret in
+this repo is intentional OSINT material for participants of
+[secretconctf.com](https://secretconctf.com/):
 
-If you find a secret that should not be there, open a private security
-advisory on the repo rather than a public issue.
+- The Win10 EWS challenge ships with a known-bad VNC password drawn from
+  the public SecLists default-credentials list. That is the intended
+  foothold.
+- `targets/ews-win11/flag-notes.md` documents the intended kill chain.
+- The `SecretConEwsSync` service has an unquoted image path on purpose.
+  It is the intended local-privilege-escalation primitive.
+- Lab IP ranges, the `secret-ctf.com` and `care-secllc.com` domains, and
+  the topology in `docs/architecture.md` are all part of the training
+  scenario.
+
+Do not file issues asking us to scrub these. Real production secrets
+(keys, sops files, `.env`, dashboard admin passwords, WireGuard endpoint
+config) must never land in this repo. If you find a real secret that
+should not be there, open a private security advisory rather than a
+public issue.
 
 ## Development workflow
 
