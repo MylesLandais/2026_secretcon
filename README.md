@@ -1,75 +1,116 @@
-# 2026 SecretCon CTF Infrastructure
+# SecretCon 2026 Threat Range
 
-Monorepo for the 2026 SecretCon ICS/OT red-blue CTF environment.
+Infrastructure-as-code for the 2026 SecretCon ICS/OT capture-the-flag
+environment. This repo is also the reference implementation for the
+adversarial-simulation training range we run year-round.
 
-## Quick Start
+The lab pairs a Windows engineering workstation (EWS) with a CompactLogix
+PLC and a Wazuh SIEM, deployed on Proxmox. Players foothold via a known-bad
+VNC default, pivot through an unquoted-service-path local privilege
+escalation, and have an optional path into the OT segment for PLC and
+EtherNet/IP work. Blue-team telemetry lands in Wazuh from Sysmon, Suricata,
+and the Wazuh agent.
 
-```bash
+For event participation see [secretconctf.com](https://secretconctf.com/).
+
+## What this repo gives you
+
+- Packer recipes that build a Win10 LTSC challenge VM, locally under QEMU or
+  natively on Proxmox.
+- Three-script Proxmox deploy pattern for the Wazuh SIEM (template, deploy,
+  verify) with cloud-init.
+- Windows post-install bootstrap that installs TightVNC, the Wazuh agent,
+  Sysmon, and Python + pycomm3 for ICS work.
+- NixOS dev shell with `packer`, `terraform`, `qemu`, `sops`, `age`, and
+  `xorriso` pinned.
+- Agent skills under `.claude/skills/` so AI assistants in the repo speak
+  the same dialect of Packer, Proxmox, and Wazuh as the maintainers.
+
+## Lab topology
+
+```
+Internet
+   |
+   v
+[ WireGuard gateway (UniFi OS) ]----[ Primary DNS 172.16.130.2 ]
+   |
+   +-- 192.168.2.0/24      tunnel
+   +-- 192.168.60.0/24     management VLAN
+   |     +-- 192.168.60.1    Proxmox (manage.secret-ctf.com)
+   |     +-- 192.168.60.253  Mgmt server
+   +-- 192.168.61.0/24     challenge VLAN
+   |     +-- 192.168.61.10   Wazuh SIEM (VM 110)
+   |     +-- 192.168.61.20   Win10 EWS    (VM 109)
+   +-- 172.16.30.0/24      DC subnet, dc01.care-secllc.com
+```
+
+Full architecture in [docs/architecture.md](docs/architecture.md).
+
+## Quick start
+
+```
 nix develop
 ```
 
-## Structure
+Drops you into a shell with all build tooling on `PATH`.
+
+### Build the EWS challenge VM locally (QEMU)
+
+Prereqs: Windows 10 LTSC eval ISO and `virtio-win.iso` in `~/Downloads/`.
 
 ```
-infrastructure/      # IaC — Packer, Terraform, NixOS modules
-provisioning/        # Bootstrap scripts for all targets
-targets/             # CTF-specific configs, flags, logic
+nix build .#win10-ews-local
+./scripts/run-local-vm.sh result/win10-ews-local.qcow2
 ```
 
-## Targets
+The running VM exposes RDP on `localhost:3389`, WinRM on `5985`, and a guest
+VNC on `5900`.
 
-| VM   | Role               | IP              | Notes                     |
-|------|--------------------|-----------------|---------------------------|
-| 101  | Wazuh SIEM         | 192.168.61.10   | Blue team log aggregation |
-| 102  | Win11 EWS          | 192.168.61.20   | Red team pivot target     |
+### Build the EWS challenge VM on Proxmox
 
-## Local Build (Cerberus NixOS)
+ISOs are downloaded directly on the Proxmox host. Tunnel uplink is too slow
+to push a baked qcow2 across.
 
-Prerequisites: Windows 11 LTSC Eval ISO + virtio-win.iso in `~/Downloads/`
-
-Don't have the ISO? Use Fido:
-
-```bash
-./scripts/fetch-iso.sh          # interactive
-./scripts/fetch-iso.sh "Windows 11" "23H2" "Enterprise LTSC" "English"
+```
+packer init  infrastructure/packer/proxmox-vm.pkr.hcl
+packer build infrastructure/packer/proxmox-vm.pkr.hcl
 ```
 
-Build:
-```bash
-nix build .#win11-ews-local
+Requires `PROXMOX_URL`, `PROXMOX_TOKEN_ID`, `PROXMOX_TOKEN_SECRET`.
+
+### Deploy the Wazuh SIEM
+
+```
+ssh root@<proxmox-host> bash -s < infrastructure/proxmox/build-wazuh-template.sh
+bash infrastructure/proxmox/deploy-wazuh-siem.sh
+bash infrastructure/proxmox/verify-wazuh-siem.sh
 ```
 
-Run the resulting qcow2:
-```bash
-./scripts/run-local-vm.sh result/win11-ews-local.qcow2
-```
+See [docs/runbooks/deploy-wazuh.md](docs/runbooks/deploy-wazuh.md) for the
+full sequence and verification checks.
 
-RDP to `localhost:3389`, WinRM on `localhost:5985`.
+## CTF OSINT note
 
-## Proxmox Build
+Some of what looks like a secret in this repo is not. The Win10 EWS challenge
+ships with a known-bad VNC password drawn from a public SecLists wordlist,
+and `targets/ews-win11/flag-notes.md` documents the intended kill chain. That
+content is part of the training material for SecretCon participants and is
+intentional. Real secrets (sops files, dashboard admin credentials, the
+WireGuard endpoint) live outside the repo and stay out.
 
-```bash
-nix build .#win11-ews-proxmox
-```
+## Contributing
 
-Requires `PROXMOX_URL`, `PROXMOX_TOKEN_ID`, `PROXMOX_TOKEN_SECRET`, `WINRM_PASSWORD`.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 
-## NixOS Integration
+Highlights:
 
-Import the local VM test module into your system config:
+- Conventional Commits required.
+- Commits or docs with emoji will be rejected by CI.
+- Skills under `.claude/skills/` follow vendor naming, one folder per tool.
+- Runbooks under `docs/runbooks/` follow `deploy-<target>.md`.
 
-```nix
-# ~/.config/nixos/configuration.nix
-imports = [
-  # ... your existing imports
-  /home/warby/Workspace/2026_secretcon/infrastructure/nix/local-vm-test.nix
-];
-```
+By contributing you agree to the [Contributor Covenant](CODE_OF_CONDUCT.md).
 
-Then `sudo nixos-rebuild switch`.
+## License
 
-## Conventional Commits
-
-- `feat(infra):`
-- `fix(packer):`
-- `docs(targets):`
+MIT, see [LICENSE](LICENSE).
