@@ -54,12 +54,12 @@ source "qemu" "win10-ews-local" {
   ]
 
   floppy_files = [
-    "${path.root}/../../provisioning/autounattend.xml"
+    "${path.root}/../../provisioning/local/autounattend.xml"
   ]
 
   cd_label = "PROVISION"
   cd_files = [
-    "${path.root}/../../provisioning/setup-openssh.ps1",
+    "${path.root}/../../provisioning/openssh/setup-openssh.ps1",
     "${path.root}/../../provisioning/openssh/OpenSSH-Win64.zip",
     "${path.root}/../../provisioning/tightvnc/tightvnc-2.8.87-gpl-setup-64bit.msi",
     "${path.root}/../../provisioning/ssh/packer_ed25519.pub"

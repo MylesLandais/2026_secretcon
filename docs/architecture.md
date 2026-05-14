@@ -83,9 +83,9 @@ infrastructure/packer/proxmox-vm.pkr.hcl
 Wazuh SIEM is its own pipeline (cloud-image, not Packer-baked):
 
 ```
-infrastructure/proxmox/build-wazuh-template.sh   # one-shot template build, runs on host
-infrastructure/proxmox/deploy-wazuh-siem.sh      # tear down, clone, cloud-init, bootstrap
-infrastructure/proxmox/verify-wazuh-siem.sh      # acceptance test
+scripts/proxmox/build-wazuh-template.sh   # one-shot template build, runs on host
+scripts/proxmox/deploy-wazuh-siem.sh      # tear down, clone, cloud-init, bootstrap
+scripts/proxmox/verify-wazuh-siem.sh      # acceptance test
 provisioning/bash/bootstrap-wazuh-ubuntu.sh      # runs inside the VM via cloud-init
 provisioning/cloud-init/wazuh/user-data          # NoCloud payload
 ```

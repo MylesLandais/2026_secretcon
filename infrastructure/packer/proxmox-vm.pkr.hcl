@@ -87,7 +87,7 @@ source "proxmox-iso" "win10-ews" {
     cd_files         = [
       "${path.root}/../../provisioning/proxmox/autounattend.xml",
       "${path.root}/../../provisioning/proxmox/setstatic.ps1",
-      "${path.root}/../../provisioning/setup-openssh.ps1",
+      "${path.root}/../../provisioning/openssh/setup-openssh.ps1",
       "${path.root}/../../provisioning/proxmox-static-ip.txt",
       "${path.root}/../../provisioning/openssh/OpenSSH-Win64.zip",
       "${path.root}/../../provisioning/tightvnc/tightvnc-2.8.87-gpl-setup-64bit.msi",

@@ -62,9 +62,9 @@ See `proxmox/SKILL.md` and the runbook at `docs/runbooks/deploy-wazuh.md`.
 
 ## Canonical examples
 
-- `infrastructure/proxmox/build-wazuh-template.sh`
-- `infrastructure/proxmox/deploy-wazuh-siem.sh`
-- `infrastructure/proxmox/verify-wazuh-siem.sh`
+- `scripts/proxmox/build-wazuh-template.sh`
+- `scripts/proxmox/deploy-wazuh-siem.sh`
+- `scripts/proxmox/verify-wazuh-siem.sh`
 - `provisioning/bash/bootstrap-wazuh-ubuntu.sh`
 - `provisioning/powershell/bootstrap_win.ps1`
 - `provisioning/cloud-init/wazuh/user-data`

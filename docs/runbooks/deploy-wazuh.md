@@ -18,7 +18,7 @@ SecretCon Proxmox host. Target IP `192.168.61.10`, VMID `110`.
 ### 1. Build the base template (one-shot, first run only)
 
 ```
-ssh root@192.168.60.1 'bash -s' < infrastructure/proxmox/build-wazuh-template.sh
+ssh root@192.168.60.1 'bash -s' < scripts/proxmox/build-wazuh-template.sh
 ```
 
 This creates a Proxmox template at VMID `9000` from the Ubuntu jammy
@@ -27,7 +27,7 @@ cloud-image. Skip if already present (`qm list | grep 9000`).
 ### 2. Deploy the SIEM VM
 
 ```
-bash infrastructure/proxmox/deploy-wazuh-siem.sh
+bash scripts/proxmox/deploy-wazuh-siem.sh
 ```
 
 What this does:
@@ -49,7 +49,7 @@ template build time on the first run.
 ### 3. Verify
 
 ```
-bash infrastructure/proxmox/verify-wazuh-siem.sh
+bash scripts/proxmox/verify-wazuh-siem.sh
 ```
 
 Checks:

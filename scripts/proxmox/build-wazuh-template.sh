@@ -4,7 +4,7 @@
 #
 # Idempotent: re-running rebuilds the template from the pinned image.
 # Runs on the Proxmox host. From the workstation:
-#   ssh root@192.168.60.1 'bash -s' < infrastructure/proxmox/build-wazuh-template.sh
+#   ssh root@192.168.60.1 'bash -s' < scripts/proxmox/build-wazuh-template.sh
 
 set -euo pipefail
 

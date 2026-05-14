@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Acceptance test for the deployed Wazuh SIEM. Exits non-zero on any failure.
 # Run from the workstation, repo root:
-#   ./infrastructure/proxmox/verify-wazuh-siem.sh
+#   ./scripts/proxmox/verify-wazuh-siem.sh
 
 set -euo pipefail
 

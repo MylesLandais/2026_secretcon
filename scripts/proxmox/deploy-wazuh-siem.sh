@@ -3,7 +3,7 @@
 # cloud-init template, applies cloud-init, waits for SSH, runs Wazuh bootstrap.
 #
 # Run from the workstation, repo root:
-#   ./infrastructure/proxmox/deploy-wazuh-siem.sh
+#   ./scripts/proxmox/deploy-wazuh-siem.sh
 #
 # Re-running is safe — full teardown happens before clone.
 
@@ -98,4 +98,4 @@ ssh "${SSH_OPTS[@]}" "dadmin@${VM_IP}" 'sudo cat /root/wazuh-passwords.txt 2>/de
 
 echo
 echo "[+] Wazuh SIEM deploy complete: https://${VM_IP}"
-echo "    Run: ./infrastructure/proxmox/verify-wazuh-siem.sh"
+echo "    Run: ./scripts/proxmox/verify-wazuh-siem.sh"

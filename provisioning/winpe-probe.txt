@@ -1,4 +1,0 @@
-select disk 0
-select partition 3
-assign letter=W
-exit

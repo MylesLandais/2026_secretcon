@@ -83,9 +83,9 @@ Requires `PROXMOX_URL`, `PROXMOX_TOKEN_ID`, `PROXMOX_TOKEN_SECRET`.
 ### Deploy the Wazuh SIEM
 
 ```
-ssh root@<proxmox-host> bash -s < infrastructure/proxmox/build-wazuh-template.sh
-bash infrastructure/proxmox/deploy-wazuh-siem.sh
-bash infrastructure/proxmox/verify-wazuh-siem.sh
+ssh root@<proxmox-host> bash -s < scripts/proxmox/build-wazuh-template.sh
+bash scripts/proxmox/deploy-wazuh-siem.sh
+bash scripts/proxmox/verify-wazuh-siem.sh
 ```
 
 See [docs/runbooks/deploy-wazuh.md](docs/runbooks/deploy-wazuh.md) for the
