@@ -73,8 +73,37 @@ If you are baking a fresh image from an ISO, that is a Packer task. See
 - Cloud-init inside the guest writes to `/var/log/cloud-init-output.log`.
   Read it first when "the bootstrap script did not run."
 
+## Virtual networking
+
+Bridges on node `manage`:
+
+- `vmbr0` — management VLAN `192.168.60.0/24`. Proxmox host carries
+  `192.168.60.1`. Not VLAN-aware. Provisioning traffic and SSH live
+  here.
+- `vmbr1` — challenge VLAN `192.168.61.0/24`. Today the Proxmox host
+  serves `192.168.61.1` directly; once OPNsense is deployed it will own
+  this address and route. Not VLAN-aware.
+
+Rules of thumb:
+
+- Pick VLAN-aware bridge OR per-interface VLAN tagging, not both. Mixing
+  loses traffic silently. Default to flat bridges and let a firewall VM
+  do tagging on its own interfaces if you need sub-VLANs.
+- When a firewall VM (OPNsense) sits in-path, do not also leave the
+  Proxmox host with an IP on the same bridge. Two default gateways on
+  one segment causes asymmetric routing.
+- Proxmox-native bridge firewalling (`Datacenter -> Firewall`) is useful
+  for blanket inbound rules on the host. Per-flow policy belongs in the
+  in-path firewall VM, not in the host bridge firewall.
+- Cloud-init NIC config persists through `qm set --ipconfig0` style
+  changes; the seed ISO does not. Reboots after `--net1` reassignment
+  may need a cloud-init reset (`cloud-init clean`) inside the guest.
+
+See `opnsense/SKILL.md` for the firewall VM that consumes this bridge
+layout.
+
 ## References
 
 - VM inventory and subnet layout in `docs/architecture.md`.
 - Wazuh deploy runbook: `docs/runbooks/deploy-wazuh.md`.
-- See also `wazuh/SKILL.md` and `packer/SKILL.md`.
+- See also `wazuh/SKILL.md`, `packer/SKILL.md`, and `opnsense/SKILL.md`.

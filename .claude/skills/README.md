@@ -2,7 +2,22 @@
 
 This directory holds skill definitions for AI coding assistants working in
 this repo. The aim is that an agent landing here picks up the same dialect
-of Packer, Proxmox, Wazuh, and our writing style as the maintainers.
+of Packer, Proxmox, Wazuh, OPNsense, and our writing style as the
+maintainers.
+
+## How agents use these files
+
+Skills are loaded as project context by AI coding assistants (Claude
+Code, Cursor, etc.) when they open the repo. An agent working on a Wazuh
+rule reads `wazuh/SKILL.md`; an agent touching a firewall rule reads
+`opnsense/SKILL.md`. Contributors do not need to invoke skills directly
+— they are background context, not a runtime dependency.
+
+The rule for human contributors: if your PR touches tool X, update
+`.claude/skills/<X>/SKILL.md` in the same PR. Skills drift fast when
+treated as documentation; treat them as part of the code surface.
+
+See `CONTRIBUTING.md` for the full contribution policy.
 
 ## Layout
 
@@ -14,6 +29,7 @@ One folder per vendor or tool. Each folder contains a single `SKILL.md`.
   packer/SKILL.md
   proxmox/SKILL.md
   wazuh/SKILL.md
+  opnsense/SKILL.md
   terraform/SKILL.md
 ```
 

@@ -97,16 +97,50 @@ scripts/             Local developer scripts
 .claude/skills/      AI agent skill definitions, one folder per tool
 ```
 
+## How agent skills work
+
+`.claude/skills/` holds skill definitions read by AI coding assistants
+(Claude Code, Cursor, etc.) when they open the repo. They are loaded as
+project context, scoped to a vendor or tool: `packer/`, `proxmox/`,
+`wazuh/`, `opnsense/`, `terraform/`.
+
+Contributors do not need to use the skills directly. The expectation is
+that PRs touching tool X also update `.claude/skills/<X>/SKILL.md` in
+the same PR. Treat skills as part of the code surface, not as separate
+documentation. A new tool in the stack means a new skill folder.
+
+The "skill + runbook + canonical script" triad is the shape we aim for:
+
+- `.claude/skills/<tool>/SKILL.md` — conventions and pitfalls.
+- `docs/runbooks/deploy-<target>.md` — step-by-step deploy procedure.
+- `scripts/<tool>/<verb>-<target>.sh` — the canonical script the
+  runbook references.
+
+When any one of those changes, check whether the other two need to move
+with it.
+
+## Build paths: Nix-local vs Proxmox
+
+The lab supports two build paths for the Win10 EWS challenge VM:
+
+- **Nix-local** (`flake.nix .#win10-ews-local` plus Packer's QEMU
+  builder). Builds a qcow2 on your workstation. Fast iteration, runs in
+  software-only QEMU, exposes RDP/WinRM/VNC on `localhost`. Use this
+  while developing autounattend changes or bootstrap scripts.
+- **Proxmox-native** (`packer build infrastructure/packer/proxmox-vm.pkr.hcl`).
+  Builds directly on the Proxmox host using the `proxmox-iso` builder.
+  Slower iteration, produces the actual lab VM on `vmbr1`. Use this
+  once the local build is green.
+
+Practical rule: test changes on the Nix-local path first. The Proxmox
+build pulls a fresh ISO over the lab uplink and a failed run wastes
+real time. The two paths share the same `provisioning/` scripts; if you
+change one, the other gets the same code.
+
 ## Agent skills
 
-If you use Claude Code, Cursor, or another AI coding assistant on this
-repo, the `.claude/skills/` directory holds skill definitions scoped to the
-tools we use (Packer, Proxmox, Wazuh, Terraform). Add new skills under
-this directory using the same vendor-named layout.
-
-If you contribute a new tool to the stack, please add a matching skill
-folder. The skills are part of the contribution surface, not an
-afterthought.
+See `.claude/skills/README.md` for the index. New tool in the stack
+means a new skill folder.
 
 ## Reporting issues
 
