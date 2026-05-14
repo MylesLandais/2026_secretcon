@@ -71,5 +71,24 @@
             cp -r output-* $out/ || true
           '';
         };
+
+        packages.wazuh-siem-proxmox = pkgs.stdenv.mkDerivation {
+          name = "wazuh-siem-proxmox";
+          src = ./.;
+          nativeBuildInputs = [ pkgs.packer ];
+
+          buildPhase = ''
+            export HOME=$(mktemp -d)
+            export PACKER_LOG=1
+            cd infrastructure/packer
+            packer init .
+            packer build -only=proxmox-wazuh-ubuntu.proxmox-iso.wazuh-ubuntu .
+          '';
+
+          installPhase = ''
+            mkdir -p $out
+            echo "wazuh-siem deployed to Proxmox VMID 110" > $out/README
+          '';
+        };
       });
 }

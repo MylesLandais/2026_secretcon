@@ -31,7 +31,7 @@
     win11-test = {
       image = "dockurr/windows";
       autoStart = false;
-      ports = [ "8006:8006" "3389:3389/tcp" "3389:3389/udp" ];
+      ports = [ "8006:8006" "3389:3389/tcp" "3389:3389/udp" "5900:5900/tcp" ];
       environment = {
         VERSION = "win11";
         RAM_SIZE = "8G";

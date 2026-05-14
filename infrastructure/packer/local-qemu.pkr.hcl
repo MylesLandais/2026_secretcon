@@ -39,13 +39,14 @@ source "qemu" "win10-ews-local" {
   disk_size      = "128G"
   disk_interface = "ide"
 
-  net_device      = "e1000e"
-  communicator    = "ssh"
-  ssh_username    = "Administrator"
-  ssh_password    = "packer"
-  ssh_private_key_file = "${path.root}/../../provisioning/ssh/packer_ed25519"
-  ssh_timeout     = "90m"
-  skip_compaction = true
+  net_device             = "e1000e"
+  communicator           = "ssh"
+  ssh_username           = "packer"
+  ssh_password           = "packer"
+  ssh_private_key_file   = "${path.root}/../../provisioning/ssh/packer_ed25519"
+  ssh_timeout            = "20m"
+  ssh_handshake_attempts = 1000
+  skip_compaction        = true
 
   boot_wait = "3s"
   boot_command = [
@@ -60,6 +61,7 @@ source "qemu" "win10-ews-local" {
   cd_files = [
     "${path.root}/../../provisioning/setup-openssh.ps1",
     "${path.root}/../../provisioning/openssh/OpenSSH-Win64.zip",
+    "${path.root}/../../provisioning/tightvnc/tightvnc-2.8.87-gpl-setup-64bit.msi",
     "${path.root}/../../provisioning/ssh/packer_ed25519.pub"
   ]
 
@@ -88,12 +90,12 @@ build {
 
   provisioner "powershell" {
     script           = "${path.root}/../../provisioning/powershell/bootstrap_win.ps1"
-    environment_vars = ["WAZUH_MANAGER=192.168.61.10"]
+    environment_vars = ["WAZUH_MANAGER=10.0.2.2"]
   }
 
   provisioner "powershell" {
     inline = [
-      "Get-Service sshd, Sysmon64, WazuhSvc | Format-Table Name, Status, StartType",
+      "Get-Service sshd, Sysmon64, WazuhSvc, tvnserver, SecretConEwsSync | Format-Table Name, Status, StartType",
       "& 'C:\\Program Files\\Python312\\python.exe' -c 'import pycomm3; print(pycomm3.__version__)'",
       "Get-LocalUser | Select-Object Name, Enabled"
     ]

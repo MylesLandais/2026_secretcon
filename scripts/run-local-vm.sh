@@ -13,6 +13,7 @@ fi
 echo "[*] Starting local EWS VM..."
 echo "    RDP:    localhost:3389"
 echo "    WinRM:  localhost:5985"
+echo "    VNC:    localhost:5900"
 
 exec "$QEMU" \
     -enable-kvm \
@@ -21,7 +22,7 @@ exec "$QEMU" \
     -smp 4 \
     -m 8192 \
     -drive file="$DISK",format=qcow2,if=virtio \
-    -netdev user,id=net0,hostfwd=tcp::3389-:3389,hostfwd=tcp::5985-:5985 \
+    -netdev user,id=net0,hostfwd=tcp::3389-:3389,hostfwd=tcp::5985-:5985,hostfwd=tcp::5900-:5900 \
     -device virtio-net,netdev=net0 \
     -display gtk \
     -vga virtio

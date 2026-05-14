@@ -48,14 +48,18 @@ echo "[*] injecting OEM-style WinPE installer (startnet.cmd + diskpart.txt) into
 # passes execute on first boot.
 STARTNET_SRC="$REPO_ROOT/provisioning/winpe-startnet.cmd"
 DISKPART_SRC="$REPO_ROOT/provisioning/winpe-diskpart.txt"
+PROBE_SRC="$REPO_ROOT/provisioning/winpe-probe.txt"
 [ -f "$STARTNET_SRC" ] || { echo "missing $STARTNET_SRC" >&2; exit 1; }
 [ -f "$DISKPART_SRC" ] || { echo "missing $DISKPART_SRC" >&2; exit 1; }
+[ -f "$PROBE_SRC" ] || { echo "missing $PROBE_SRC" >&2; exit 1; }
 
 # Convert LF -> CRLF for Windows; place into staging.
 STARTNET_STAGED="$STAGE/startnet.cmd"
 DISKPART_STAGED="$STAGE/diskpart.txt"
+PROBE_STAGED="$STAGE/probe.txt"
 sed 's/$/\r/' "$STARTNET_SRC" > "$STARTNET_STAGED"
 sed 's/$/\r/' "$DISKPART_SRC" > "$DISKPART_STAGED"
+sed 's/$/\r/' "$PROBE_SRC" > "$PROBE_STAGED"
 
 # winpeshl.exe defaults to launching setup.exe (the UWP wizard) when no
 # winpeshl.ini is present. We add one that explicitly runs cmd /c startnet.cmd
@@ -68,10 +72,11 @@ WIM_CMDS="$STAGE/wim-oem-cmds.txt"
     printf 'delete --force /Windows/System32/startnet.cmd\n'
     printf 'add %s /Windows/System32/startnet.cmd\n' "$STARTNET_STAGED"
     printf 'add %s /diskpart.txt\n' "$DISKPART_STAGED"
+    printf 'add %s /probe.txt\n' "$PROBE_STAGED"
     printf 'add %s /Windows/System32/winpeshl.ini\n' "$WINPESHL_STAGED"
 } > "$WIM_CMDS"
 nix-shell -p wimlib --run "wimupdate '$STAGE/sources/boot.wim' 2 < '$WIM_CMDS'" 2>&1 | tail -5
-rm -f "$WIM_CMDS" "$STARTNET_STAGED" "$DISKPART_STAGED" "$WINPESHL_STAGED"
+rm -f "$WIM_CMDS" "$STARTNET_STAGED" "$DISKPART_STAGED" "$PROBE_STAGED" "$WINPESHL_STAGED"
 
 echo "[*] repacking to $OUT_ISO (UEFI boot preserved, no-prompt)"
 nix-shell -p libisoburn --run "xorriso -as mkisofs \

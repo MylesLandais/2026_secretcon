@@ -9,9 +9,11 @@ provisioning/ssh/
 
 # Vendored binaries (regenerable, not source)
 provisioning/openssh/*.zip
+provisioning/tightvnc/*.msi
 
-# Local agent state
-.claude/
+# Local agent state — keep shared skill definitions under .claude/skills/
+.claude/*
+!.claude/skills/
 output/
 
 # Terraform
