@@ -33,7 +33,7 @@ Start-Service WazuhSvc
 
 # CTF user: patrick (low-priv)
 $pw = ConvertTo-SecureString "Changeme123!" -AsPlainText -Force
-New-LocalUser -Name "patrick" -Password $pw -FullName "Patrick" -Description "OT Operator"
+New-LocalUser -Name "patrick" -Password $pw -FullName "Patrick" -Description "EWS Operator"
 Add-LocalGroupMember -Group "Users" -Member "patrick"
 Remove-LocalGroupMember -Group "Administrators" -Member "patrick" -ErrorAction SilentlyContinue
 
@@ -184,12 +184,6 @@ Set-ItemProperty -Path $winlogon -Name "DefaultPassword" -Value "Changeme123!"
 Set-ItemProperty -Path $winlogon -Name "DefaultDomainName" -Value $env:COMPUTERNAME
 Set-ItemProperty -Path $winlogon -Name "ForceAutoLogon" -Value "1"
 
-# Python + pycomm3 for ICS challenges
-$pyInstaller = "C:\python-3.12.7-amd64.exe"
-Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe" -OutFile $pyInstaller
-Start-Process $pyInstaller -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_pip=1" -Wait
-& "C:\Program Files\Python312\python.exe" -m pip install --no-warn-script-location pycomm3
-
 Write-Host "[*] Validating bootstrap..."
 $failed = @()
 foreach ($svc in 'Sysmon64','WazuhSvc','tvnserver','SecretConEwsSync') {
@@ -204,8 +198,6 @@ $serviceAcl = icacls $serviceRoot
 if (-not ($serviceAcl -match 'BUILTIN\\Users:.*\(M\)')) { $failed += "$serviceRoot is not modifiable by BUILTIN\Users" }
 if (-not (Test-Path $rootFlag)) { $failed += "root flag missing" }
 if (-not (Get-ScheduledTask -TaskName "SecretConUserFlag" -ErrorAction SilentlyContinue)) { $failed += "user flag logon task missing" }
-& "C:\Program Files\Python312\python.exe" -c "import pycomm3; print(pycomm3.__version__)"
-if ($LASTEXITCODE -ne 0) { $failed += "pycomm3 import failed" }
 if ($failed.Count -gt 0) {
     Write-Error ("Bootstrap validation failed: " + ($failed -join '; '))
     exit 1

@@ -1,4 +1,4 @@
-# EWS Win11 Flags
+# EWS Win10 LTSC Flags
 
 ## Low-Priv User
 - User: `patrick`
@@ -21,11 +21,5 @@
 - Intended hijack path: `C:\Program Files\SecretCon\EWS.exe`
 
 ## Attack Paths
-1. VNC brute force with default VNC password list → `patrick` desktop → user flag
-2. Unquoted service path → LocalSystem → root flag
-3. ARP poison / AiTM on VLAN 10 (EtherNet/IP to PLC)
-4. NanoKVM OOB HID hijack → Studio 5000 ladder rewrite
-
-## PLC Access
-- Studio 5000 / RSLogix / CCW for CompactLogix
-- Fallback: pycomm3 Python scripts
+1. VNC brute force with default VNC password list -> `patrick` desktop -> user flag
+2. Unquoted service path -> LocalSystem -> root flag

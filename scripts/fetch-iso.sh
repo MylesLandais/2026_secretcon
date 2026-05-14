@@ -16,7 +16,7 @@ if [ ! -f "$FIDO_SCRIPT" ]; then
     curl -L -o "$FIDO_SCRIPT" "$FIDO_URL"
 fi
 
-# Default: Windows 11 LTSC (recommended for ICS/OT environments)
+# Default: Windows 11 LTSC
 WIN_VERSION="${1:-Windows 11}"
 WIN_RELEASE="${2:-23H2}"
 WIN_EDITION="${3:-Enterprise LTSC}"

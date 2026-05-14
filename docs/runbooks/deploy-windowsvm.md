@@ -3,7 +3,7 @@
 Build the Engineering Workstation challenge VM. Two paths: local QEMU
 for fast iteration, and Proxmox-native for the live lab. Both produce
 the same artifact: a Win10 LTSC VM with TightVNC, the Wazuh agent,
-Sysmon, and Python with pycomm3 installed.
+and Sysmon installed.
 
 The challenge ships with:
 
@@ -45,7 +45,7 @@ What this does:
 - Boots Windows under QEMU, waits for SSH (delivered by the
   CD-mounted OpenSSH bundle in `provisioning/openssh/`).
 - Runs `provisioning/powershell/bootstrap_win.ps1` to install TightVNC,
-  the Wazuh agent, Sysmon, Python and pycomm3.
+  the Wazuh agent, and Sysmon.
 - Drops the qcow2 at `infrastructure/packer/output/win10-ews-local/`.
 
 Running VM exposes:

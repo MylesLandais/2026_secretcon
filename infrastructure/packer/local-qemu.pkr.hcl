@@ -96,7 +96,6 @@ build {
   provisioner "powershell" {
     inline = [
       "Get-Service sshd, Sysmon64, WazuhSvc, tvnserver, SecretConEwsSync | Format-Table Name, Status, StartType",
-      "& 'C:\\Program Files\\Python312\\python.exe' -c 'import pycomm3; print(pycomm3.__version__)'",
       "Get-LocalUser | Select-Object Name, Enabled"
     ]
   }

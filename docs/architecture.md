@@ -107,6 +107,22 @@ Dashboard access from a workstation outside vmbr1:
 ssh -N -L 8443:192.168.61.10:443 root@192.168.60.1
 ```
 
+## Deferred: OT segment
+
+The 2026 design originally included an OT segment with a CompactLogix
+PLC, EtherNet/IP traffic, and Studio 5000 / RSLogix tooling on the EWS
+for engineers. That work was pruned for resources and is not deployed.
+
+If reintroduced, the design was:
+
+- New VLAN on a third bridge, isolated from `vmbr0` and `vmbr1`.
+- PLC reachable from the EWS only, with `pycomm3` Python tooling.
+- Suricata coverage of EtherNet/IP traffic feeding Wazuh.
+- Out-of-band attack surface via a NanoKVM appliance.
+
+Do not introduce PLC, pycomm3, or EtherNet references elsewhere in
+the repo without restoring the substrate first.
+
 ## CTF design notes (intentional)
 
 Some configuration in this repo is part of the training game, not a

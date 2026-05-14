@@ -1,15 +1,17 @@
 # SecretCon 2026 Threat Range
 
-Infrastructure-as-code for the 2026 SecretCon ICS/OT capture-the-flag
+Infrastructure-as-code for the 2026 SecretCon capture-the-flag
 environment. This repo is also the reference implementation for the
 adversarial-simulation training range we run year-round.
 
-The lab pairs a Windows engineering workstation (EWS) with a CompactLogix
-PLC and a Wazuh SIEM, deployed on Proxmox. Players foothold via a known-bad
-VNC default, pivot through an unquoted-service-path local privilege
-escalation, and have an optional path into the OT segment for PLC and
-EtherNet/IP work. Blue-team telemetry lands in Wazuh from Sysmon, Suricata,
-and the Wazuh agent.
+The lab pairs a Windows engineering workstation (EWS) with a Wazuh SIEM,
+deployed on Proxmox. Players foothold via a known-bad VNC default and
+pivot through an unquoted-service-path local privilege escalation.
+Blue-team telemetry lands in Wazuh from Sysmon, Suricata, and the Wazuh
+agent.
+
+An OT segment with a CompactLogix PLC was scoped for 2026 but pruned
+for resources. See `docs/architecture.md` for the deferred design.
 
 For event participation see [secretconctf.com](https://secretconctf.com/).
 
@@ -20,7 +22,7 @@ For event participation see [secretconctf.com](https://secretconctf.com/).
 - Three-script Proxmox deploy pattern for the Wazuh SIEM (template, deploy,
   verify) with cloud-init.
 - Windows post-install bootstrap that installs TightVNC, the Wazuh agent,
-  Sysmon, and Python + pycomm3 for ICS work.
+  and Sysmon.
 - NixOS dev shell with `packer`, `terraform`, `qemu`, `sops`, `age`, and
   `xorriso` pinned.
 - Agent skills under `.claude/skills/` so AI assistants in the repo speak
