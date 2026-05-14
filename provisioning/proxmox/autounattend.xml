@@ -79,6 +79,11 @@
           <Path>cmd /c reg add "HKLM\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff" /f</Path>
           <Description>Suppress Networks discovery prompt</Description>
         </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>cmd /c for %i in (D E F G H I J K) do @if exist %i:\setstatic.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File %i:\setstatic.ps1</Path>
+          <Description>Set static Proxmox build IPv4 address before OOBE</Description>
+        </RunSynchronousCommand>
       </RunSynchronous>
     </component>
     <component name="Microsoft-Windows-LUA-Settings" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">

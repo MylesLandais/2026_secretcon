@@ -10,6 +10,40 @@ if (-not $src) { throw "PROVISION media not found" }
 $root = "${src}:\"
 Write-Host "[setup-openssh] using provisioning media at $root"
 
+$networkConfig = Join-Path $root 'proxmox-static-ip.txt'
+if (Test-Path $networkConfig) {
+  $parts = ((Get-Content $networkConfig -Raw).Trim() -split '\|')
+  if ($parts.Count -lt 3) {
+    throw "Invalid proxmox-static-ip.txt; expected IP|prefix|gateway|dns"
+  }
+
+  $ip = $parts[0]
+  $prefix = [int]$parts[1]
+  $gateway = $parts[2]
+  $dns = @()
+  if ($parts.Count -ge 4 -and $parts[3]) {
+    $dns = $parts[3] -split ','
+  }
+
+  $adapter = Get-NetAdapter |
+    Where-Object Status -eq 'Up' |
+    Sort-Object InterfaceMetric, ifIndex |
+    Select-Object -First 1
+  if (-not $adapter) { throw "No active network adapter found for static IP setup" }
+
+  Write-Host "[setup-openssh] applying static IPv4 $ip/$prefix via $gateway on $($adapter.Name)"
+  Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object IPAddress -ne '127.0.0.1' |
+    Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
+  Get-NetRoute -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object DestinationPrefix -eq '0.0.0.0/0' |
+    Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
+  New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress $ip -PrefixLength $prefix -DefaultGateway $gateway | Out-Null
+  if ($dns.Count -gt 0) {
+    Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dns
+  }
+}
+
 $zip = Join-Path $root 'OpenSSH-Win64.zip'
 $dst = 'C:\Program Files\OpenSSH'
 if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }

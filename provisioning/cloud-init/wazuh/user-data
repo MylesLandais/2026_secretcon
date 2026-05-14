@@ -1,0 +1,61 @@
+#cloud-config
+hostname: wazuh-siem
+manage_etc_hosts: true
+preserve_hostname: false
+
+users:
+  - name: dadmin
+    groups: [sudo, adm]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILhXVOz91PuBTg6wsOFz50P4J2oo1Onc6/xGPopzp+ps packer@secretcon-build
+
+ssh_pwauth: false
+disable_root: true
+
+package_update: true
+package_upgrade: false
+packages:
+  - qemu-guest-agent
+  - curl
+  - ca-certificates
+  - gnupg
+  - python3
+
+growpart:
+  mode: auto
+  devices: ['/']
+  ignore_growroot_disabled: false
+
+write_files:
+  - path: /etc/systemd/system/getty@tty1.service.d/override.conf
+    permissions: '0644'
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=-/sbin/agetty --autologin dadmin --noclear %I $TERM
+      Type=idle
+  - path: /etc/motd
+    permissions: '0644'
+    content: |
+      ============================================================
+       SecretCon 2026 — Wazuh SIEM (VM 110)
+      ============================================================
+       Dashboard : https://192.168.61.10
+       Login     : admin / see  sudo cat /root/wazuh-passwords.txt
+       Live log  : sudo tail -F /var/ossec/logs/alerts/alerts.log
+       Agents    : sudo /var/ossec/bin/agent_control -l
+       SSH       : ssh -J root@192.168.60.1 dadmin@192.168.61.10
+      ============================================================
+       Tier-1 analysts: open the Dashboard URL in a browser via the
+       WireGuard tunnel; this console is for break-glass only.
+      ============================================================
+
+runcmd:
+  - [systemctl, enable, --now, qemu-guest-agent]
+  - [systemctl, enable, --now, ssh]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, getty@tty1.service]
+  - [systemctl, restart, getty@tty1.service]
