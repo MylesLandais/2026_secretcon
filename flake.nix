@@ -26,6 +26,9 @@
             openssl
             qemu
             xorriso
+            cdrkit
+            msitools
+            pkgsCross.mingwW64.buildPackages.gcc
           ];
 
           shellHook = ''
@@ -36,8 +39,8 @@
           '';
         };
 
-        packages.win11-ews-local = pkgs.stdenv.mkDerivation {
-          name = "win11-ews-local";
+        packages.win10-ews-local = pkgs.stdenv.mkDerivation {
+          name = "win10-ews-local";
           src = ./infrastructure/packer;
           nativeBuildInputs = [ pkgs.packer pkgs.qemu ];
 
@@ -45,17 +48,17 @@
             export HOME=$(mktemp -d)
             export PACKER_LOG=1
             packer init .
-            packer build -only=qemu.win11-ews-local .
+            packer build -only=qemu.win10-ews-local .
           '';
 
           installPhase = ''
             mkdir -p $out
-            cp -r output/win11-ews-local/*.qcow2 $out/
+            cp -r output/win10-ews-local/*.qcow2 $out/
           '';
         };
 
-        packages.win11-ews-proxmox = pkgs.stdenv.mkDerivation {
-          name = "win11-ews-proxmox";
+        packages.win10-ews-proxmox = pkgs.stdenv.mkDerivation {
+          name = "win10-ews-proxmox";
           src = ./infrastructure/packer;
           nativeBuildInputs = [ pkgs.packer ];
 
@@ -63,12 +66,31 @@
             export HOME=$(mktemp -d)
             export PACKER_LOG=1
             packer init .
-            packer build -only=proxmox-iso.win11-ews .
+            packer build -only=proxmox-iso.win10-ews .
           '';
 
           installPhase = ''
             mkdir -p $out
             cp -r output-* $out/ || true
+          '';
+        };
+
+        packages.cysvuln-local = pkgs.stdenv.mkDerivation {
+          name = "cysvuln-local";
+          src = ./.;
+          nativeBuildInputs = [ pkgs.packer pkgs.qemu ];
+
+          buildPhase = ''
+            export HOME=$(mktemp -d)
+            export PACKER_LOG=1
+            cd infrastructure/packer/cysvuln
+            packer init .
+            packer build -only=qemu.cysvuln-local .
+          '';
+
+          installPhase = ''
+            mkdir -p $out
+            cp -r output/cysvuln-local/*.qcow2 $out/
           '';
         };
 
