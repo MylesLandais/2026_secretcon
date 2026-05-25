@@ -1,0 +1,15 @@
+# Shared PROVISION payload (paths relative to repo root).
+# Consumed by Packer locals, build-provision-iso, and proxmox-vm-cysvuln.
+# Lines starting with # are ignored.
+
+provisioning/powershell/lib/SecretCon.Bootstrap.psm1
+provisioning/openssh/setup-openssh.ps1
+provisioning/openssh/OpenSSH-Win64.zip
+provisioning/ssh/packer_ed25519.pub
+infrastructure/artifacts/cysvuln/60f3ff1f3cd34dec80fba130ea481f31-efssetup.exe
+infrastructure/artifacts/cysvuln/joe-notes.txt
+infrastructure/artifacts/cysvuln/admin-notes.txt
+infrastructure/artifacts/cysvuln/option.ini
+provisioning/powershell/assets/sysmonconfig.xml
+infrastructure/artifacts/cysvuln/aie-validation-payload.msi
+provisioning/cysvuln/validate-aie.ps1

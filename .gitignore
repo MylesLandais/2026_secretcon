@@ -6,6 +6,7 @@ secrets/
 .sops.yaml
 provisioning/ssh/
 !provisioning/ssh/readme.md
+wazuh-creds-*.txt
 
 # Vendored binaries (regenerable, not source)
 provisioning/openssh/*.zip
@@ -44,3 +45,30 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local build outputs and VM images
+artifacts/
+*.qcow2
+*.vhdx
+__pycache__/
+**/__pycache__/
+*.pyc
+.codex
+
+# Personal NixOS configs (not part of this repo)
+configuration.nix
+home.nix
+hardware-configuration.nix
+hermes.nix
+vars.nix
+PORT.md.archived
+
+# Generated PROVISION ISO for Hyper-V
+infrastructure/packer/cysvuln/provision.iso
+# Local ISO symlinks (stage via scripts/stage-cysvuln-iso.sh)
+infrastructure/packer/iso/
+
+# CysVuln challenge binaries (fetch via scripts/fetch-cysvuln-artifacts.sh)
+infrastructure/artifacts/cysvuln/*.exe
+infrastructure/artifacts/cysvuln/*.msi
+!infrastructure/artifacts/cysvuln/.gitkeep

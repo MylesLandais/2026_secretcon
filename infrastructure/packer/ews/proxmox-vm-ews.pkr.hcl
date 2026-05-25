@@ -7,27 +7,6 @@ packer {
   }
 }
 
-variable "proxmox_url" {
-  type    = string
-  default = env("PROXMOX_URL")
-}
-
-variable "proxmox_username" {
-  type    = string
-  default = env("PROXMOX_USERNAME")
-}
-
-variable "proxmox_password" {
-  type      = string
-  default   = env("PROXMOX_PASSWORD")
-  sensitive = true
-}
-
-variable "proxmox_node" {
-  type    = string
-  default = "manage"
-}
-
 variable "vm_id" {
   type    = number
   default = 109
@@ -84,15 +63,7 @@ source "proxmox-iso" "win10-ews" {
 
   additional_iso_files {
     cd_label         = "PROVISION"
-    cd_files         = [
-      "${path.root}/../../provisioning/proxmox/autounattend.xml",
-      "${path.root}/../../provisioning/proxmox/setstatic.ps1",
-      "${path.root}/../../provisioning/openssh/setup-openssh.ps1",
-      "${path.root}/../../provisioning/proxmox-static-ip.txt",
-      "${path.root}/../../provisioning/openssh/OpenSSH-Win64.zip",
-      "${path.root}/../../provisioning/tightvnc/tightvnc-2.8.87-gpl-setup-64bit.msi",
-      "${path.root}/../../provisioning/ssh/packer_ed25519.pub"
-    ]
+    cd_files         = local.proxmox_provision_files
     iso_storage_pool = "local"
     type             = "ide"
     index            = 3
@@ -100,17 +71,17 @@ source "proxmox-iso" "win10-ews" {
   }
 
   disks {
-    disk_size         = "128G"
-    storage_pool      = "local-lvm"
-    type              = "sata"
-    format            = "raw"
-    cache_mode        = "writeback"
-    discard           = true
+    disk_size           = "128G"
+    storage_pool        = "local-lvm"
+    type                = "sata"
+    format              = "raw"
+    cache_mode          = "writeback"
+    discard             = true
     exclude_from_backup = true
   }
 
-  memory = 8192
-  cores  = 4
+  memory   = 8192
+  cores    = 4
   cpu_type = "host"
 
   network_adapters {
@@ -119,18 +90,16 @@ source "proxmox-iso" "win10-ews" {
     firewall = true
   }
 
-  boot_wait = "3s"
-  boot_command = [
-    "<spacebar><spacebar>"
-  ]
+  boot_wait    = local.boot_wait
+  boot_command = local.boot_command_installer
 
   communicator           = "ssh"
   ssh_host               = var.build_ssh_host
-  ssh_username           = "packer"
-  ssh_password           = "packer"
-  ssh_private_key_file   = "${path.root}/../../provisioning/ssh/packer_ed25519"
-  ssh_timeout            = "30m"
-  ssh_handshake_attempts = 1000
+  ssh_username           = local.ssh_username
+  ssh_password           = local.ssh_password
+  ssh_private_key_file   = local.ssh_private_key_file
+  ssh_timeout            = local.ssh_timeout
+  ssh_handshake_attempts = local.ssh_handshake_attempts
 
   task_timeout = "30m"
 }
@@ -147,8 +116,8 @@ build {
   }
 
   provisioner "powershell" {
-    script           = "${path.root}/../../provisioning/powershell/bootstrap_win.ps1"
-    environment_vars = ["WAZUH_MANAGER=192.168.61.10"]
+    script           = local.bootstrap_script
+    environment_vars = local.proxmox_bootstrap_env
   }
 
   provisioner "powershell" {

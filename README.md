@@ -52,35 +52,48 @@ Full architecture in [docs/architecture.md](docs/architecture.md).
 
 ```
 nix develop
+cp example.env .env   # edit with your lab values; never commit .env
+./scripts/test-local.sh
 ```
 
-Drops you into a shell with all build tooling on `PATH`.
+Drops you into a shell with Packer, QEMU, Python validation tools, and
+xorriso on `PATH`.
 
-### Build the EWS challenge VM locally (QEMU)
+Windows ISOs are not in git. See [docs/windows-image-inputs.md](docs/windows-image-inputs.md).
 
-Prereqs: Windows 10 LTSC eval ISO and `virtio-win.iso` in `~/Downloads/`.
+### CysVulnServer (Server 2016 + EFS)
+
+Required inputs: Server 2016 ISO, CysVuln artifacts (fetch script), optional flags.
 
 ```
+./scripts/fetch-iso.sh server-2016 <url>
+./scripts/fetch-cysvuln-artifacts.sh
+```
+
+Build path (pick one):
+
+| Platform | Command / doc |
+|----------|----------------|
+| QEMU (Nix) | `nix build .#cysvuln-local` then `scripts/run-local-cysvuln.sh` |
+| Proxmox | [docs/runbooks/deploy-cysvulnserver.md](docs/runbooks/deploy-cysvulnserver.md) |
+| VMware | [docs/runbooks/deploy-cysvuln-multi-hypervisor.md](docs/runbooks/deploy-cysvuln-multi-hypervisor.md) |
+| Hyper-V | `scripts/build-provision-iso.ps1` then Packer in `infrastructure/packer/cysvuln/` |
+
+Validate after boot: `./scripts/verify-cysvuln.sh <target-ip>`
+
+### EWS challenge (Win10 LTSC)
+
+```
+./scripts/fetch-iso.sh win10-ltsc <url>
 nix build .#win10-ews-local
 ./scripts/run-local-vm.sh result/win10-ews-local.qcow2
 ```
 
-The running VM exposes RDP on `localhost:3389`, WinRM on `5985`, and a guest
-VNC on `5900`.
+Proxmox-native: `cd infrastructure/packer/ews && packer build -only=proxmox-iso.win10-ews .` with
+`PROXMOX_URL`, `PROXMOX_USERNAME`, `PROXMOX_PASSWORD` from `.env`.
+See [docs/runbooks/deploy-windowsvm.md](docs/runbooks/deploy-windowsvm.md).
 
-### Build the EWS challenge VM on Proxmox
-
-ISOs are downloaded directly on the Proxmox host. Tunnel uplink is too slow
-to push a baked qcow2 across.
-
-```
-packer init  infrastructure/packer/proxmox-vm.pkr.hcl
-packer build infrastructure/packer/proxmox-vm.pkr.hcl
-```
-
-Requires `PROXMOX_URL`, `PROXMOX_TOKEN_ID`, `PROXMOX_TOKEN_SECRET`.
-
-### Deploy the Wazuh SIEM
+### Wazuh SIEM
 
 ```
 ssh root@<proxmox-host> bash -s < scripts/proxmox/build-wazuh-template.sh
@@ -88,8 +101,14 @@ bash scripts/proxmox/deploy-wazuh-siem.sh
 bash scripts/proxmox/verify-wazuh-siem.sh
 ```
 
-See [docs/runbooks/deploy-wazuh.md](docs/runbooks/deploy-wazuh.md) for the
-full sequence and verification checks.
+See [docs/runbooks/deploy-wazuh.md](docs/runbooks/deploy-wazuh.md).
+
+## Security research notice
+
+This repo ships intentional CTF footholds, flags, and validation exploits for
+[secretconctf.com](https://secretconctf.com/). Real infrastructure secrets
+(`.env`, Wazuh cred dumps, private keys) must never be committed. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Contributing
 
@@ -99,10 +118,8 @@ Highlights:
 
 - Conventional Commits required.
 - Commits or docs with emoji will be rejected by CI.
-- Skills under `.claude/skills/` follow vendor naming, one folder per tool.
+- Local validation: `./scripts/test-local.sh` (hosted CI does not boot VMs).
 - Runbooks under `docs/runbooks/` follow `deploy-<target>.md`.
-
-By contributing you agree to the [Contributor Covenant](CODE_OF_CONDUCT.md).
 
 ## License
 

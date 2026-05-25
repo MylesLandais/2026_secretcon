@@ -7,16 +7,6 @@ packer {
   }
 }
 
-variable "iso_url" {
-  type        = string
-  description = "file:/// URL to the LTSC ISO. Build-SecretConEwsVhdx.ps1 passes this via -var-file."
-}
-
-variable "iso_checksum" {
-  type    = string
-  default = "sha256:c90a6df8997bf49e56b9673982f3e80745058723a707aef8f22998ae6479597d"
-}
-
 variable "hyperv_switch_name" {
   type        = string
   default     = "Default Switch"
@@ -73,30 +63,21 @@ source "hyperv-iso" "win10-ews-hyperv" {
   headless = true
 
   communicator           = "ssh"
-  ssh_username           = "packer"
-  ssh_password           = "packer"
-  ssh_private_key_file   = "${path.root}/../../../provisioning/ssh/packer_ed25519"
+  ssh_username           = local.ssh_username
+  ssh_password           = local.ssh_password
+  ssh_private_key_file   = local.ssh_private_key_file
   ssh_timeout            = "20m"
-  ssh_handshake_attempts = 1000
+  ssh_handshake_attempts = local.ssh_handshake_attempts
 
-  boot_wait = "3s"
-  boot_command = [
-    "<spacebar><spacebar>"
-  ]
+  boot_wait    = local.boot_wait
+  boot_command = local.boot_command_installer
 
-  floppy_files = [
-    "${path.root}/../../../provisioning/local/autounattend.xml"
-  ]
+  floppy_files = [local.qemu_autounattend]
 
   cd_label = "PROVISION"
-  cd_files = [
-    "${path.root}/../../../provisioning/openssh/setup-openssh.ps1",
-    "${path.root}/../../../provisioning/openssh/OpenSSH-Win64.zip",
-    "${path.root}/../../../provisioning/tightvnc/tightvnc-2.8.87-gpl-setup-64bit.msi",
-    "${path.root}/../../../provisioning/ssh/packer_ed25519.pub"
-  ]
+  cd_files = local.qemu_provision_files
 
-  http_directory = "${path.root}/../../../provisioning"
+  http_directory = "${local.repo_root}/provisioning"
   http_port_min  = 8888
   http_port_max  = 8888
 
@@ -118,7 +99,7 @@ build {
   }
 
   provisioner "powershell" {
-    script           = "${path.root}/../../../provisioning/powershell/bootstrap_win.ps1"
+    script           = local.bootstrap_script
     environment_vars = local.ews_bootstrap_env
   }
 

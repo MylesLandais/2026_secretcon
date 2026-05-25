@@ -38,10 +38,10 @@ scripts under `provisioning/` instead.
 
 ## Canonical examples
 
-- `infrastructure/packer/local-qemu.pkr.hcl` — Win10 LTSC under QEMU, SSH
-  communicator, VNC/RDP/WinRM exposed on localhost ports for validation.
-- `infrastructure/packer/proxmox-vm.pkr.hcl` — Same target on Proxmox,
-  node `manage`, storage `local-lvm`, bridge `vmbr0` for provisioning
+- `infrastructure/packer/ews/local-qemu-ews.pkr.hcl` — Win10 LTSC EWS under
+  QEMU, SSH communicator.
+- `infrastructure/packer/ews/proxmox-vm-ews.pkr.hcl` — Same EWS target on
+  Proxmox, node `manage`, storage `local-lvm`, bridge `vmbr0` for provisioning
   then `vmbr1` for the player-facing run.
 - `infrastructure/packer/wazuh-ubuntu.pkr.hcl` — Ubuntu cloud-image based
   template for the Wazuh SIEM.

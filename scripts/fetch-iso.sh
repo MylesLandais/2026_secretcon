@@ -29,11 +29,9 @@ case "$TARGET" in
         HINTS="https://massgrave.dev/windows_ltsc_links  (en-us x64 LTSC 2021)"
         ;;
     server-2016)
-        ISO_NAME="14393.0.160715-1616.RS1_RELEASE_SERVER_EVAL_X64FRE_EN-US.ISO"
-        # Operator: resolve a URL once, run the script, copy the printed sha256
-        # in here, then commit. The "none" sentinel means "verify-only-skip".
-        ISO_SHA256="${SERVER_2016_SHA256:-none}"
-        HINTS="https://www.microsoft.com/en-us/evalcenter/evaluate-windows-server-2016"
+        ISO_NAME="cysvuln-server-2016.iso"
+        ISO_SHA256="1ce702a578a3cb1ac3d14873980838590f06d5b7101c5daaccbac9d73f1fb50f"
+        HINTS="https://www.microsoft.com/en-us/evalcenter/evaluate-windows-server-2016  or  ./scripts/stage-cysvuln-iso.sh"
         ;;
     -h|--help|help)
         sed -n '1,30p' "$0"
@@ -50,6 +48,14 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUTDIR="${OUTDIR:-${REPO_ROOT}/infrastructure/packer/iso}"
 mkdir -p "$OUTDIR"
 OUT="${OUTDIR}/${ISO_NAME}"
+
+if [ -z "$URL" ] && [ ! -f "$OUT" ]; then
+    STAGE_SCRIPT="${REPO_ROOT}/scripts/stage-cysvuln-iso.sh"
+    if [ "$TARGET" = "server-2016" ] && [ -x "$STAGE_SCRIPT" ]; then
+        echo "[*] No ISO at $OUT — trying stage-cysvuln-iso.sh"
+        "$STAGE_SCRIPT" || true
+    fi
+fi
 
 if [ -z "$URL" ] && [ ! -f "$OUT" ]; then
     cat <<EOF
@@ -93,12 +99,12 @@ echo
 case "$TARGET" in
     win10-ltsc)
         echo "Next:"
-        echo "  - Local QEMU:  packer build ${REPO_ROOT}/infrastructure/packer/local-qemu.pkr.hcl"
+        echo "  - Local QEMU:  cd ${REPO_ROOT}/infrastructure/packer/ews && packer build -only=qemu.win10-ews-local ."
         echo "  - Proxmox:     scp \"$OUT\" root@<proxmox>:/var/lib/vz/template/iso/"
         ;;
     server-2016)
         echo "Next:"
-        echo "  - Local QEMU:  nix build .#cysvuln-local"
+        echo "  - Local QEMU:  CYSVULN_ISO=\$(readlink -f $OUT) nix build --impure .#cysvuln-local"
         echo "                 or: packer build -var cysvuln_iso_url=file://$OUT \\"
         echo "                                   ${REPO_ROOT}/infrastructure/packer/cysvuln/local-qemu-cysvuln.pkr.hcl"
         echo "  - Hyper-V:     copy ISO to the Windows build host; see docs/runbooks/deploy-cysvuln-multi-hypervisor.md"

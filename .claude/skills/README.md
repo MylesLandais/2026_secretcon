@@ -25,10 +25,14 @@ One folder per vendor or tool. Each folder contains a single `SKILL.md`.
 
 ```
 .claude/skills/
-  README.md          this file
+  README.md              this file
+  nix/SKILL.md
   packer/SKILL.md
   proxmox/SKILL.md
   wazuh/SKILL.md
+  windows-bootstrap/SKILL.md
+  validate-aie/SKILL.md
+  hyperv/SKILL.md
   opnsense/SKILL.md
   terraform/SKILL.md
 ```

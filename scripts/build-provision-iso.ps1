@@ -21,25 +21,31 @@ if (-not (Test-Path $Oscdimg)) {
     throw "oscdimg.exe not found at $Oscdimg. Install Windows ADK Deployment Tools, or pass -Oscdimg <path>."
 }
 
+$CysvulnDir = Join-Path $RepoRoot "infrastructure\packer\cysvuln"
+$manifests = @(
+    (Join-Path $CysvulnDir "provision-manifest-cysvuln.txt"),
+    (Join-Path $CysvulnDir "provision-manifest-shared.txt")
+)
+
+# Same semantics as scripts/lib/read-provision-manifest.sh (bash) used by build-provision-iso.sh.
+function Read-ManifestLines {
+    param([string]$Path)
+    Get-Content $Path | ForEach-Object {
+        $line = ($_ -split '#', 2)[0].Trim()
+        if ($line) { $line }
+    }
+}
+
 $stage = Join-Path $env:TEMP ("provision-stage-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 try {
-    $files = @(
-        "provisioning\cysvuln\autounattend.xml",
-        "provisioning\openssh\setup-openssh.ps1",
-        "provisioning\openssh\OpenSSH-Win64.zip",
-        "provisioning\ssh\packer_ed25519.pub",
-        "infrastructure\artifacts\cysvuln\60f3ff1f3cd34dec80fba130ea481f31-efssetup.exe",
-        "infrastructure\artifacts\cysvuln\joe-notes.txt",
-        "infrastructure\artifacts\cysvuln\admin-notes.txt",
-        "infrastructure\artifacts\cysvuln\option.ini"
-    )
-
-    foreach ($rel in $files) {
-        $src = Join-Path $RepoRoot $rel
-        if (-not (Test-Path $src)) { throw "Missing: $src" }
-        Copy-Item $src -Destination $stage
+    foreach ($manifest in $manifests) {
+        foreach ($rel in (Read-ManifestLines $manifest)) {
+            $src = Join-Path $RepoRoot ($rel -replace '/', '\')
+            if (-not (Test-Path $src)) { throw "Missing: $src" }
+            Copy-Item $src -Destination $stage
+        }
     }
 
     & $Oscdimg -lPROVISION -j1 -m $stage $Out

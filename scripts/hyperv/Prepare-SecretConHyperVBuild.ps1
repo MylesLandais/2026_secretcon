@@ -6,7 +6,7 @@
 .DESCRIPTION
   Downloads missing provisioning binaries (pinned SHA-256). Ensures the LTSC ISO exists at
   %USERPROFILE%\Downloads\en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso with the
-  checksum expected by infrastructure/packer/hyperv-ews/win10-ews-hyperv.pkr.hcl.
+  checksum expected by infrastructure/packer/ews/win10-ews-hyperv.pkr.hcl.
 
   Packer on Windows needs **oscdimg.exe** on PATH to build the PROVISION ISO from cd_files; this script installs
   Microsoft.OSCDIMG via winget when missing (or uses the Windows ADK copy if present).

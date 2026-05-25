@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="AIE Response Probe"
+           Language="1033"
+           Version="1.0.0.0"
+           Manufacturer="SecretCon Validation"
+           UpgradeCode="{{ upgrade_code }}">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perUser" />
+    <Media Id="1" Cabinet="probe.cab" EmbedCab="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="INSTALLDIR" Name="AieResponseProbe">
+          <Component Id="ProbeMarker" Guid="{{ component_guid }}">
+            <File Id="ProbeMarker" Source="{{ marker_source }}" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="Probe" Title="Probe" Level="1">
+      <ComponentRef Id="ProbeMarker" />
+    </Feature>
+
+    <Property Id="CmdExe" Value="C:\Windows\System32\cmd.exe" />
+    <CustomAction Id="AieProbe"
+                  Property="CmdExe"
+                  ExeCommand="{{ command_xml_escaped }}"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="AieProbe" After="InstallFiles">NOT Installed</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>

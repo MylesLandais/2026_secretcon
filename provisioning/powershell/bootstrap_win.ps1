@@ -1,7 +1,20 @@
 # SecretCon 2026 — Win11 EWS Bootstrap
 # Runs during Packer provisioning (both Proxmox and AWS)
 
+$secretconLib = Get-PSDrive -PSProvider FileSystem |
+    ForEach-Object { Join-Path $_.Root "SecretCon.Bootstrap.psm1" } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+if (-not $secretconLib) {
+    $secretconLib = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "lib\SecretCon.Bootstrap.psm1"
+}
+Import-Module $secretconLib -Force -ErrorAction Stop
+
 Write-Host "[*] Starting EWS bootstrap..."
+
+$userFlag = Get-SecretConEnvDefault -Name "SECRETCON_USER_FLAG" -Default "crit-low-priv-patrick"
+$rootFlag = Get-SecretConEnvDefault -Name "SECRETCON_ROOT_FLAG" -Default "crit-root-system-privs"
+Write-Host "[*] User flag length: $($userFlag.Length); root flag length: $($rootFlag.Length)"
 
 # Long Paths
 Set-ItemProperty `
@@ -12,24 +25,8 @@ Set-ItemProperty `
 
 # Static IP — deferred to per-clone provisioning (would kill the build SSH session if applied here)
 
-# Sysmon (Wazuh blue-team logging)
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-New-Item -ItemType Directory -Path "C:\secretcon" -Force | Out-Null
-$sysmonConfigUrl = "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml"
-Invoke-WebRequest -Uri $sysmonConfigUrl -OutFile "C:\secretcon\sysmon-config.xml" -UseBasicParsing
-$sysmonUrl = "https://download.sysinternals.com/files/Sysmon.zip"
-$sysmonZip = "$env:TEMP\Sysmon.zip"
-Invoke-WebRequest -Uri $sysmonUrl -OutFile $sysmonZip
-Expand-Archive -Path $sysmonZip -DestinationPath "$env:TEMP\Sysmon" -Force
-& "$env:TEMP\Sysmon\Sysmon64.exe" -accepteula -i C:\secretcon\sysmon-config.xml
-
-# Wazuh agent
-$WazuhManager = if ($env:WAZUH_MANAGER) { $env:WAZUH_MANAGER } else { "192.168.61.10" }
-$WazuhVersion = "4.8.0"
-$wazuhMsi = "C:\wazuh-agent-$WazuhVersion-1.msi"
-Invoke-WebRequest -Uri "https://packages.wazuh.com/4.x/windows/wazuh-agent-$WazuhVersion-1.msi" -OutFile $wazuhMsi
-Start-Process msiexec.exe -ArgumentList "/i $wazuhMsi /q WAZUH_MANAGER=$WazuhManager WAZUH_AGENT_GROUP=ews" -Wait
-Start-Service WazuhSvc
+Install-SecretConSysmon
+Install-SecretConWazuhAgent -Manager (Get-SecretConEnvDefault -Name "WAZUH_MANAGER" -Default "192.168.61.10") -Group "ews"
 
 # CTF user: patrick (low-priv)
 $pw = ConvertTo-SecureString "Changeme123!" -AsPlainText -Force
@@ -87,25 +84,23 @@ if (-not (Get-NetFirewallRule -Name "SecretCon-TightVNC-In-TCP" -ErrorAction Sil
 Set-Service -Name tvnserver -StartupType Automatic
 Start-Service tvnserver
 
+# Raise TightVNC's per-IP blacklist so credential-stuffing the SecLists default
+# VNC list (~40 entries) does not hit the 5-attempt default lockout mid-run.
+Set-ItemProperty -Path "HKLM:\SOFTWARE\TightVNC\Server" -Name "BlacklistThreshold" -Value 100 -Type DWord
+Set-ItemProperty -Path "HKLM:\SOFTWARE\TightVNC\Server" -Name "BlacklistTimeout"   -Value 0   -Type DWord
+Restart-Service tvnserver
+
 # User flag artifact. A logon task avoids pre-creating Patrick's profile path.
 $userFlagSeeder = "C:\secretcon\seed-user-flag.ps1"
-@'
-$desktop = [Environment]::GetFolderPath("Desktop")
-$flag = Join-Path $desktop "flag.txt"
-"crit-low-priv-patrick" | Set-Content -Encoding utf8 $flag
-icacls $flag /inheritance:r /grant "patrick:R" "Administrators:F" "SYSTEM:F" | Out-Null
-'@ | Set-Content -Encoding utf8 $userFlagSeeder
-$flagTaskAction = New-ScheduledTaskAction `
-  -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$userFlagSeeder`""
-$flagTaskTrigger = New-ScheduledTaskTrigger -AtLogOn -User "patrick"
-$flagTaskPrincipal = New-ScheduledTaskPrincipal -UserId "patrick" -LogonType Interactive -RunLevel Limited
-Register-ScheduledTask `
-  -TaskName "SecretConUserFlag" `
-  -Action $flagTaskAction `
-  -Trigger $flagTaskTrigger `
-  -Principal $flagTaskPrincipal `
-  -Force | Out-Null
+$userFlagB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($userFlag))
+@"
+`$desktop = [Environment]::GetFolderPath("Desktop")
+`$flag = Join-Path `$desktop "flag.txt"
+`$value = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("$userFlagB64"))
+[System.IO.File]::WriteAllText(`$flag, `$value, [System.Text.UTF8Encoding]::new(`$false))
+icacls `$flag /inheritance:r /grant "patrick:R" "Administrators:F" "SYSTEM:F" | Out-Null
+"@ | Set-Content -Encoding utf8 $userFlagSeeder
+Register-SecretConLogonSeederTask -TaskName "SecretConUserFlag" -ScriptPath $userFlagSeeder -User "patrick"
 
 # Unquoted service-path privilege escalation target
 $serviceRoot = "C:\Program Files\SecretCon"
@@ -163,10 +158,14 @@ Start-Service SecretConEwsSync
 
 # Root flag artifact
 $administratorDesktop = "C:\Users\Administrator\Desktop"
-$rootFlag = Join-Path $administratorDesktop "root.txt"
+$rootFlagPath = Join-Path $administratorDesktop "root.txt"
 New-Item -ItemType Directory -Path $administratorDesktop -Force | Out-Null
-"crit-root-system-privs" | Set-Content -Encoding utf8 $rootFlag
-icacls $rootFlag /inheritance:r /grant "SYSTEM:F" "Administrators:F" | Out-Null
+[System.IO.File]::WriteAllText(
+    $rootFlagPath,
+    $rootFlag,
+    [System.Text.UTF8Encoding]::new($false)
+)
+icacls $rootFlagPath /inheritance:r /grant "SYSTEM:F" "Administrators:F" | Out-Null
 
 # Keep Defender useful for telemetry while avoiding lab-path interference.
 try {
@@ -196,7 +195,14 @@ if ($imagePath -match '^".*"$') { $failed += "SecretConEwsSync ImagePath is quot
 if ($imagePath -notmatch '\s') { $failed += "SecretConEwsSync ImagePath does not contain spaces" }
 $serviceAcl = icacls $serviceRoot
 if (-not ($serviceAcl -match 'BUILTIN\\Users:.*\(M\)')) { $failed += "$serviceRoot is not modifiable by BUILTIN\Users" }
-if (-not (Test-Path $rootFlag)) { $failed += "root flag missing" }
+if (-not (Test-Path $rootFlagPath)) {
+    $failed += "root flag missing"
+} else {
+    $writtenRoot = [System.IO.File]::ReadAllText($rootFlagPath)
+    if ($writtenRoot -ne $rootFlag) {
+        $failed += "root flag contents do not match SECRETCON_ROOT_FLAG (got length $($writtenRoot.Length), expected $($rootFlag.Length))"
+    }
+}
 if (-not (Get-ScheduledTask -TaskName "SecretConUserFlag" -ErrorAction SilentlyContinue)) { $failed += "user flag logon task missing" }
 if ($failed.Count -gt 0) {
     Write-Error ("Bootstrap validation failed: " + ($failed -join '; '))

@@ -4,7 +4,7 @@
   Create the SecretCon EWS VHDX on Hyper-V using Packer (no QEMU).
 
 .DESCRIPTION
-  Runs Prepare-SecretConHyperVBuild.ps1 (vendor zips + ISO verify), then packer init/build on infrastructure/packer/hyperv-ews/win10-ews-hyperv.pkr.hcl.
+  Runs Prepare-SecretConHyperVBuild.ps1 (vendor zips + ISO verify), then packer init/build on infrastructure/packer/ews/win10-ews-hyperv.pkr.hcl.
 
   Needs: Hyper-V, Packer on PATH (or under Program Files), Win10 LTSC ISO matching the pinned checksum.
 
@@ -92,7 +92,7 @@ if (-not $packerExe) {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$packerDir = Join-Path $repoRoot 'infrastructure\packer\hyperv-ews'
+$packerDir = Join-Path $repoRoot 'infrastructure\packer\ews'
 $recipe = Join-Path $packerDir 'win10-ews-hyperv.pkr.hcl'
 if (-not (Test-Path -LiteralPath $recipe)) {
   throw "Missing recipe: $recipe"

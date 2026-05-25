@@ -42,10 +42,10 @@ source "proxmox-iso" "wazuh-ubuntu" {
     unmount  = true
   }
 
-  cloud_init              = false
-  http_directory          = "${path.root}/../../provisioning/cloud-init/wazuh"
-  http_port_min           = 8800
-  http_port_max           = 8900
+  cloud_init     = false
+  http_directory = "${path.root}/../../provisioning/cloud-init/wazuh"
+  http_port_min  = 8800
+  http_port_max  = 8900
 
   disks {
     disk_size    = "100G"

@@ -63,17 +63,17 @@ Two paths, same artifacts.
 
 ```
 flake.nix .#win10-ews-local
-  -> infrastructure/packer/local-qemu.pkr.hcl
+  -> infrastructure/packer/ews/local-qemu-ews.pkr.hcl
        -> Packer (qemu builder)
             -> autounattend.xml + bootstrap_win.ps1
-                 -> qcow2 in infrastructure/packer/output/
+                 -> qcow2 in infrastructure/packer/ews/output/
                       -> scripts/run-local-vm.sh exposes RDP/WinRM/VNC on localhost
 ```
 
 ### Proxmox-native
 
 ```
-infrastructure/packer/proxmox-vm.pkr.hcl
+infrastructure/packer/ews/proxmox-vm-ews.pkr.hcl
   -> Packer (proxmox-iso builder) on node manage
        -> ISO from local storage + autounattend on PROVISION ISO
             -> bootstrap_win.ps1 over SSH

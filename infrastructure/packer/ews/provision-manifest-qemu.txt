@@ -1,0 +1,8 @@
+# PROVISION ISO payload for Win10 EWS on QEMU / Hyper-V (paths relative to repo root).
+
+provisioning/openssh/setup-openssh.ps1
+provisioning/openssh/OpenSSH-Win64.zip
+provisioning/tightvnc/tightvnc-2.8.87-gpl-setup-64bit.msi
+provisioning/ssh/packer_ed25519.pub
+provisioning/powershell/assets/sysmonconfig.xml
+provisioning/powershell/lib/SecretCon.Bootstrap.psm1

@@ -6,21 +6,25 @@ set -euo pipefail
 # so we materialize the contents into an ISO here and pass the path via
 # the cysvuln_provision_iso variable.
 #
-# QEMU and VMware sources do not need this; they consume cd_files natively.
+# QEMU and VMware sources consume the same file list via Packer manifests.
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="${OUT:-${REPO_ROOT}/infrastructure/packer/cysvuln/provision.iso}"
+CYSVULN_DIR="${REPO_ROOT}/infrastructure/packer/cysvuln"
+OUT="${OUT:-${CYSVULN_DIR}/provision.iso}"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
-cp "$REPO_ROOT/provisioning/cysvuln/autounattend.xml"                                       "$STAGE/"
-cp "$REPO_ROOT/provisioning/openssh/setup-openssh.ps1"                                      "$STAGE/"
-cp "$REPO_ROOT/provisioning/openssh/OpenSSH-Win64.zip"                                      "$STAGE/"
-cp "$REPO_ROOT/provisioning/ssh/packer_ed25519.pub"                                         "$STAGE/"
-cp "$REPO_ROOT/infrastructure/artifacts/cysvuln/60f3ff1f3cd34dec80fba130ea481f31-efssetup.exe" "$STAGE/"
-cp "$REPO_ROOT/infrastructure/artifacts/cysvuln/joe-notes.txt"                              "$STAGE/"
-cp "$REPO_ROOT/infrastructure/artifacts/cysvuln/admin-notes.txt"                            "$STAGE/"
-cp "$REPO_ROOT/infrastructure/artifacts/cysvuln/option.ini"                                 "$STAGE/"
+# Manifest lines match scripts/build-provision-iso.ps1 Read-ManifestLines (strip # comments, skip blanks).
+# shellcheck source=scripts/lib/read-provision-manifest.sh
+source "${REPO_ROOT}/scripts/lib/read-provision-manifest.sh"
+
+while IFS= read -r src; do
+    base="$(basename "$src")"
+    cp "$src" "${STAGE}/${base}"
+done < <(
+    read_provision_manifest "${CYSVULN_DIR}/provision-manifest-cysvuln.txt" "$REPO_ROOT"
+    read_provision_manifest "${CYSVULN_DIR}/provision-manifest-shared.txt" "$REPO_ROOT"
+)
 
 if command -v genisoimage >/dev/null; then
     genisoimage -quiet -J -r -V PROVISION -o "$OUT" "$STAGE"

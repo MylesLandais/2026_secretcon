@@ -7,27 +7,6 @@ packer {
   }
 }
 
-variable "proxmox_url" {
-  type    = string
-  default = env("PROXMOX_URL")
-}
-
-variable "proxmox_username" {
-  type    = string
-  default = env("PROXMOX_USERNAME")
-}
-
-variable "proxmox_password" {
-  type      = string
-  default   = env("PROXMOX_PASSWORD")
-  sensitive = true
-}
-
-variable "proxmox_node" {
-  type    = string
-  default = "manage"
-}
-
 variable "vm_id" {
   type    = number
   default = 118
@@ -58,6 +37,19 @@ variable "final_bridge" {
   default = "vmbr0"
 }
 
+locals {
+  _shared_files = [
+    for p in local._shared_lines :
+    "${local.repo_root}/${p}"
+  ]
+  _proxmox_prefix = [
+    "${local.repo_root}/provisioning/proxmox/autounattend.xml",
+    "${local.repo_root}/provisioning/proxmox/setstatic.ps1",
+    "${local.repo_root}/provisioning/proxmox-static-ip.txt",
+  ]
+  proxmox_provision_files = concat(local._proxmox_prefix, local._shared_files)
+}
+
 source "proxmox-iso" "win2016-cysvuln" {
   proxmox_url              = var.proxmox_url
   username                 = var.proxmox_username
@@ -83,19 +75,8 @@ source "proxmox-iso" "win2016-cysvuln" {
   }
 
   additional_iso_files {
-    cd_label = "PROVISION"
-    cd_files = [
-      "${path.root}/../../provisioning/proxmox/autounattend.xml",
-      "${path.root}/../../provisioning/proxmox/setstatic.ps1",
-      "${path.root}/../../provisioning/openssh/setup-openssh.ps1",
-      "${path.root}/../../provisioning/proxmox-static-ip.txt",
-      "${path.root}/../../provisioning/openssh/OpenSSH-Win64.zip",
-      "${path.root}/../../provisioning/ssh/packer_ed25519.pub",
-      "${path.root}/../../infrastructure/artifacts/cysvuln/60f3ff1f3cd34dec80fba130ea481f31-efssetup.exe",
-      "${path.root}/../../infrastructure/artifacts/cysvuln/joe-notes.txt",
-      "${path.root}/../../infrastructure/artifacts/cysvuln/admin-notes.txt",
-      "${path.root}/../../infrastructure/artifacts/cysvuln/option.ini"
-    ]
+    cd_label         = "PROVISION"
+    cd_files         = local.proxmox_provision_files
     iso_storage_pool = "local"
     type             = "ide"
     index            = 3
@@ -123,18 +104,16 @@ source "proxmox-iso" "win2016-cysvuln" {
     firewall = false
   }
 
-  boot_wait = "3s"
-  boot_command = [
-    "<spacebar><spacebar>"
-  ]
+  boot_wait    = local.boot_wait
+  boot_command = local.boot_command_installer
 
   communicator           = "ssh"
   ssh_host               = var.build_ssh_host
-  ssh_username           = "packer"
-  ssh_password           = "packer"
-  ssh_private_key_file   = "${path.root}/../../provisioning/ssh/packer_ed25519"
-  ssh_timeout            = "30m"
-  ssh_handshake_attempts = 1000
+  ssh_username           = local.ssh_username
+  ssh_password           = local.ssh_password
+  ssh_private_key_file   = local.ssh_private_key_file
+  ssh_timeout            = local.ssh_timeout
+  ssh_handshake_attempts = local.ssh_handshake_attempts
 
   task_timeout = "30m"
 }
@@ -151,12 +130,8 @@ build {
   }
 
   provisioner "powershell" {
-    script = "${path.root}/../../provisioning/powershell/bootstrap_cysvuln.ps1"
-    environment_vars = [
-      "WAZUH_MANAGER=192.168.61.10",
-      "SECRETCON_USER_FLAG=${env("SECRETCON_USER_FLAG")}",
-      "SECRETCON_ROOT_FLAG=${env("SECRETCON_ROOT_FLAG")}"
-    ]
+    script           = local.bootstrap_script
+    environment_vars = local.bootstrap_env
   }
 
   provisioner "powershell" {

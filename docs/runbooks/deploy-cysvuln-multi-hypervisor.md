@@ -4,7 +4,7 @@ The CysVulnServer challenge (Windows Server 2016 + EFS Easy File Sharing 6.9 + A
 
 | Target | Source file | Output |
 |---|---|---|
-| Proxmox VE | `infrastructure/packer/proxmox-vm-cysvuln.pkr.hcl` | Proxmox VM template (VMID 118) |
+| Proxmox VE | `infrastructure/packer/cysvuln/proxmox-vm-cysvuln.pkr.hcl` | Proxmox VM template (VMID 118) |
 | QEMU/KVM (Nix host) | `infrastructure/packer/cysvuln/local-qemu-cysvuln.pkr.hcl` | `cysvuln.qcow2` |
 | Hyper-V (Windows host) | `infrastructure/packer/cysvuln/hyperv-cysvuln.pkr.hcl` | `cysvuln.vhdx` |
 | VMware Workstation/Fusion | `infrastructure/packer/cysvuln/vmware-cysvuln.pkr.hcl` | `cysvuln.vmx` + `cysvuln.vmdk` |
@@ -13,18 +13,28 @@ All four feed `bootstrap_cysvuln.ps1` and the same PROVISION payload (`infrastru
 
 ## Common prerequisites
 
-1. **Server 2016 ISO**. Resolve a Microsoft eval-center URL, then:
+1. **Server 2016 ISO** — see [docs/windows-image-inputs.md](../windows-image-inputs.md):
 
        ./scripts/fetch-iso.sh server-2016 <url>
 
-   On the first run the sha256 is recorded; pin it in `scripts/fetch-iso.sh` for repeatability. Output lands at `infrastructure/packer/iso/`.
+   Pin the observed SHA-256 in `scripts/fetch-iso.sh` after the first good download.
 
-2. **Flag environment variables** (optional — placeholders are used if unset):
+2. **CysVuln artifacts** (EFS installer, validation MSI, scenario text):
+
+       ./scripts/fetch-cysvuln-artifacts.sh
+       # optional: ./scripts/fetch-cysvuln-artifacts.sh --generate-msi
+
+   Details: `infrastructure/artifacts/cysvuln/readme.md`
+
+3. **Environment** — copy `example.env` to `.env` for Proxmox/Wazuh deploys.
+
+4. **Flag variables** (optional):
 
        export SECRETCON_USER_FLAG='flag{...}'
        export SECRETCON_ROOT_FLAG='flag{...}'
 
-3. **SSH key**. `provisioning/ssh/packer_ed25519{,.pub}` is the Packer communicator key; it is already committed.
+5. **SSH key** — generate `provisioning/ssh/packer_ed25519` locally if missing
+   (private key is gitignored; `.pub` may be committed).
 
 ## QEMU/KVM on Nix
 
@@ -41,7 +51,12 @@ The flake derivation runs `packer init` + `packer build -only=qemu.cysvuln-local
       -machine pc -nic user,model=e1000,hostfwd=tcp::5985-:5985 \
       -drive file=./result/cysvuln.qcow2,if=ide,format=qcow2
 
-Or import into libvirt with `virt-install --import --disk path=...`. The bootstrap configures static `192.168.60.51`; if you run on a NAT bridge with a different subnet, override via `-var build_ssh_host=<dhcp-assigned>` on the packer invocation.
+Or import into libvirt with `virt-install --import --disk path=...`. The bootstrap configures static `192.168.60.51` on Proxmox; local QEMU uses user networking with host forwards (see [docs/cysvulnserver/readme.md](../cysvulnserver/readme.md)).
+
+Boot locally:
+
+    ./scripts/run-local-cysvuln.sh
+    WINRM_PORT=15985 ./scripts/cysvuln-local-prep.sh 127.0.0.1
 
 ## Hyper-V on Windows
 
@@ -91,13 +106,21 @@ ESXi remote builds: pass `-var "vmware_host=esxi.lab"` plus the additional `remo
 
 After any build, boot the artifact and run from your attacker box:
 
-    pip install pywinrm
+    nix develop
+    ./scripts/check-cysvuln-tooling.sh --default
     ./scripts/verify-cysvuln.sh <target-ip>
 
-The script probes the four AIE levers (HKLM AIE = 1, `ConsentPromptBehaviorAdmin = 0`, `PromptOnSecureDesktop = 0`, User_Joe present) plus user/root flag files. Exit 0 means the box is ready for the chain proven in `[[2026-05-19-cysvuln-live-state]]`.
+For local QEMU user-networking: `WINRM_PORT=15985 ./scripts/verify-cysvuln.sh 127.0.0.1`
+
+The script checks WinRM, AIE/UAC registry levers, User_Joe presence, and both flag files. It does not execute the EFS or MSI exploit chains — see [docs/cysvulnserver/walkthrough.md](../cysvulnserver/walkthrough.md).
 
 ## Maintenance
 
-The four sources share `cysvuln-shared.pkr.hcl` (locals: provisioning file list, bootstrap script path, env). When `bootstrap_cysvuln.ps1` or any artifact under `infrastructure/artifacts/cysvuln/` changes, all four builds pick it up; no per-source edit needed.
+All builders read `infrastructure/packer/cysvuln/provision-manifest-shared.txt`
+(QEMU/VMware via `cysvuln-shared.pkr.hcl`, Proxmox via `cysvuln/proxmox-vm-cysvuln.pkr.hcl`,
+Hyper-V via `scripts/build-provision-iso.sh`). When adding a PROVISION file, edit
+the manifest once and re-run `./scripts/test-local.sh`.
 
-The Proxmox recipe stays at the top of `infrastructure/packer/` and does not share locals with the new sources — its provisioning file list lives inline. If you change the artifact set, update both `proxmox-vm-cysvuln.pkr.hcl` and `cysvuln/cysvuln-shared.pkr.hcl`.
+## Recipe sharing, not artifact sharing
+
+Packer source files + flake derivation (`packages.cysvuln-local`) are the recommended cross-hypervisor sharing path. Direct qcow2-to-vhdx conversion introduces registry-hive and disk-sector drift that can alter AIE-flag behavior; avoid it. Build fresh on each hypervisor from the same Packer source.

@@ -12,6 +12,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
+# Load environment for Wazuh credentials
+if [ -f .env ]; then
+  source .env
+  echo "[*] Loaded credentials from .env"
+else
+  echo "[!] WARNING: .env not found — Wazuh passwords will be randomly generated"
+fi
+
 PROXMOX_HOST="${PROXMOX_HOST:-192.168.60.1}"
 PROXMOX_SSH="root@${PROXMOX_HOST}"
 TEMPLATE_VMID="${TEMPLATE_VMID:-9000}"
@@ -35,7 +43,7 @@ if ! ssh "${PROXMOX_SSH}" "qm status ${TEMPLATE_VMID}" >/dev/null 2>&1; then
 fi
 
 step "Tearing down any existing VMID ${VMID}"
-ssh "${PROXMOX_SSH}" "qm stop ${VMID} 2>/dev/null || true; sleep 2; qm destroy ${VMID} --purge 1 --skiplock 1 2>/dev/null || true"
+ssh "${PROXMOX_SSH}" "qm stop ${VMID} 2>/dev/null || true; while qm status ${VMID} 2>/dev/null | grep -q running; do sleep 2; done; qm destroy ${VMID} --purge 1 --skiplock 1 2>/dev/null || true"
 
 step "Uploading cloud-init user-data + ssh pubkey"
 scp "${USER_DATA}" "${PROXMOX_SSH}:/var/lib/vz/snippets/wazuh-user.yaml"
@@ -87,14 +95,19 @@ echo "    cloud-init complete."
 step "Sanity: confirm disk is full size"
 ssh "${SSH_OPTS[@]}" "dadmin@${VM_IP}" 'df -h / | tail -1'
 
-step "Copying bootstrap script"
-scp "${SSH_OPTS[@]}" "${BOOTSTRAP}" "dadmin@${VM_IP}:/tmp/bootstrap-wazuh-ubuntu.sh"
+step "Running Wazuh bootstrap (this takes ~5-10 min, piped over SSH)"
+ssh "${SSH_OPTS[@]}" "dadmin@${VM_IP}" 'sudo bash -s' < "${BOOTSTRAP}"
 
-step "Running Wazuh bootstrap (this takes ~5-10 min)"
-ssh "${SSH_OPTS[@]}" "dadmin@${VM_IP}" 'sudo bash /tmp/bootstrap-wazuh-ubuntu.sh'
-
-step "Fetching dashboard credentials"
-ssh "${SSH_OPTS[@]}" "dadmin@${VM_IP}" 'sudo cat /root/wazuh-passwords.txt 2>/dev/null | head -30' || true
+step "Fetching and saving dashboard credentials"
+CREDS_FILE="${REPO_ROOT}/wazuh-creds-$(date +%Y%m%d-%H%M%S).txt"
+ssh "${SSH_OPTS[@]}" "dadmin@${VM_IP}" 'sudo cat /root/wazuh-passwords.txt' > "${CREDS_FILE}" 2>/dev/null || {
+  echo "WARNING: Failed to retrieve Wazuh credentials" >&2
+}
+if [ -f "${CREDS_FILE}" ]; then
+  chmod 600 "${CREDS_FILE}"
+  echo "[+] Credentials saved to: ${CREDS_FILE}"
+  grep -iE "admin|password" "${CREDS_FILE}" | head -5
+fi
 
 echo
 echo "[+] Wazuh SIEM deploy complete: https://${VM_IP}"

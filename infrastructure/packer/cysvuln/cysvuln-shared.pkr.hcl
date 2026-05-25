@@ -26,18 +26,23 @@ variable "secretcon_root_flag" {
 locals {
   repo_root = "${path.root}/../../.."
 
+  _cysvuln_lines = compact([
+    for line in split("\n", file("${path.root}/provision-manifest-cysvuln.txt")) :
+    trimspace(line)
+    if length(trimspace(line)) > 0 && !startswith(trimspace(line), "#")
+  ])
+  _shared_lines = compact([
+    for line in split("\n", file("${path.root}/provision-manifest-shared.txt")) :
+    trimspace(line)
+    if length(trimspace(line)) > 0 && !startswith(trimspace(line), "#")
+  ])
+
   provision_files = [
-    "${path.root}/../../../provisioning/cysvuln/autounattend.xml",
-    "${path.root}/../../../provisioning/openssh/setup-openssh.ps1",
-    "${path.root}/../../../provisioning/openssh/OpenSSH-Win64.zip",
-    "${path.root}/../../../provisioning/ssh/packer_ed25519.pub",
-    "${path.root}/../../../infrastructure/artifacts/cysvuln/60f3ff1f3cd34dec80fba130ea481f31-efssetup.exe",
-    "${path.root}/../../../infrastructure/artifacts/cysvuln/joe-notes.txt",
-    "${path.root}/../../../infrastructure/artifacts/cysvuln/admin-notes.txt",
-    "${path.root}/../../../infrastructure/artifacts/cysvuln/option.ini"
+    for p in concat(local._cysvuln_lines, local._shared_lines) :
+    "${local.repo_root}/${p}"
   ]
 
-  bootstrap_script = "${path.root}/../../../provisioning/powershell/bootstrap_cysvuln.ps1"
+  bootstrap_script = "${local.repo_root}/provisioning/powershell/bootstrap_cysvuln.ps1"
 
   bootstrap_env = [
     "WAZUH_MANAGER=${var.cysvuln_wazuh_manager}",

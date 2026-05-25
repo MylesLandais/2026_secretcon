@@ -10,12 +10,16 @@ set -uo pipefail
 # Usage:
 #   ./scripts/verify-cysvuln.sh <target-ip> [admin-password]
 #
-# Requires: python3 with pywinrm available (`pip install pywinrm`), or
-#           evil-winrm in $PATH (fallback shell check only).
+# Environment:
+#   WINRM_PORT   WinRM port (default 5985; use 15985 for run-local-cysvuln.sh)
+#   JOE_PW       User_Joe password override
+#
+# Requires: python3 with pywinrm (provided by nix develop).
 
 TARGET="${1:-}"
 ADMIN_PW="${2:-PizzaMan123!}"
 JOE_PW="${JOE_PW:-VeryStrongPassword123!@#}"
+WINRM_PORT="${WINRM_PORT:-5985}"
 
 if [ -z "$TARGET" ]; then
     echo "usage: $0 <target-ip> [admin-password]"
@@ -27,20 +31,16 @@ if ! python3 -c "import winrm" 2>/dev/null; then
     exit 2
 fi
 
-PASS=0
-FAIL=0
-declare -a RESULTS
-
-check() {
-    if [ "$2" = "PASS" ]; then RESULTS+=("PASS  $1  ${3:-}"); PASS=$((PASS+1))
-    else                       RESULTS+=("FAIL  $1  ${3:-}"); FAIL=$((FAIL+1)); fi
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/check-harness.sh
+source "${SCRIPT_DIR}/lib/check-harness.sh"
+check_init
 
 winrm_admin() {
-    python3 - "$TARGET" "$ADMIN_PW" "$1" <<'PY'
+    python3 - "$TARGET" "$ADMIN_PW" "$WINRM_PORT" "$1" <<'PY'
 import sys, winrm
-host, pw, cmd = sys.argv[1], sys.argv[2], sys.argv[3]
-s = winrm.Session(f'http://{host}:5985/wsman', auth=('Administrator', pw), transport='ntlm')
+host, pw, port, cmd = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+s = winrm.Session(f'http://{host}:{port}/wsman', auth=('Administrator', pw), transport='ntlm')
 r = s.run_ps(cmd)
 sys.stdout.write(r.std_out.decode(errors='replace'))
 sys.stderr.write(r.std_err.decode(errors='replace'))
@@ -48,14 +48,14 @@ sys.exit(r.status_code)
 PY
 }
 
-echo "[*] Target: $TARGET  (Administrator)"
+echo "[*] Target: $TARGET  (Administrator)  WinRM:$WINRM_PORT"
 
-if ! nc -z -w 3 "$TARGET" 5985 2>/dev/null; then
-    check "winrm-port-open" FAIL "tcp/5985 not open"
+if ! nc -z -w 3 "$TARGET" "$WINRM_PORT" 2>/dev/null; then
+    check "winrm-port-open" FAIL "tcp/$WINRM_PORT not open"
     echo "FAIL — aborting; WinRM not reachable"
     exit 1
 fi
-check "winrm-port-open" PASS "tcp/5985"
+check "winrm-port-open" PASS "tcp/$WINRM_PORT"
 
 HKLM_AIE=$(winrm_admin "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer' -Name AlwaysInstallElevated -EA SilentlyContinue).AlwaysInstallElevated" | tr -d '\r\n ')
 [ "$HKLM_AIE" = "1" ] && check "aie-hklm" PASS "1" || check "aie-hklm" FAIL "got '$HKLM_AIE'"
@@ -79,10 +79,9 @@ ROOT_FLAG=$(winrm_admin "if (Test-Path 'C:\\Users\\Administrator\\Desktop\\root.
 FSWS=$(winrm_admin "(Get-Service fswsService -EA SilentlyContinue).Status" | tr -d '\r\n ')
 [ -n "$FSWS" ] && check "fswsService-info" PASS "$FSWS (informational)" || check "fswsService-info" PASS "absent (informational)"
 
-echo
-echo "===== verify-cysvuln results ====="
-for r in "${RESULTS[@]}"; do echo "  $r"; done
-echo "---------------------------------"
-echo "  $PASS pass / $FAIL fail"
-echo "================================="
-[ "$FAIL" -eq 0 ]
+# Wazuh manager-side: agent enrolled and active?
+# shellcheck source=lib/check-wazuh-agent.sh
+. "${SCRIPT_DIR}/lib/check-wazuh-agent.sh"
+check_wazuh_agent "$TARGET"
+
+check_summary "verify-cysvuln results"

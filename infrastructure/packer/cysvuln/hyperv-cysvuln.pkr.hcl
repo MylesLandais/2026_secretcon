@@ -18,6 +18,14 @@ variable "cysvuln_provision_iso" {
   description = "Path to a PROVISION ISO built via scripts/build-provision-iso.ps1. Hyper-V cannot consume cd_files directly."
 }
 
+locals {
+  cysvuln_provision_iso = (
+    var.cysvuln_provision_iso != ""
+    ? var.cysvuln_provision_iso
+    : "${path.root}/stubs/provision-validate.iso"
+  )
+}
+
 source "hyperv-iso" "cysvuln-hyperv" {
   iso_url      = var.cysvuln_iso_url
   iso_checksum = var.cysvuln_iso_checksum
@@ -39,7 +47,7 @@ source "hyperv-iso" "cysvuln-hyperv" {
   ]
 
   secondary_iso_images = [
-    var.cysvuln_provision_iso
+    local.cysvuln_provision_iso
   ]
 
   boot_wait = "3s"

@@ -1,0 +1,4 @@
+# Full PROVISION ISO for CysVuln (QEMU, VMware, Hyper-V secondary CD).
+# Includes cysvuln autounattend plus shared payload.
+
+provisioning/cysvuln/autounattend.xml

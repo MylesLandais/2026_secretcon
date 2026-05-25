@@ -4,19 +4,39 @@
 
 set -euo pipefail
 
-WAZUH_VERSION="${WAZUH_VERSION:-4.8}"
+WAZUH_VERSION="${WAZUH_VERSION:-4.14}"
+WAZUH_PATCH="${WAZUH_PATCH:-4.14.5}"
+WAZUH_INSTALL_SHA256="${WAZUH_INSTALL_SHA256:-5ca5d3b605642b15935a6efdea731a6113a4a838a13caf71d2dd4a8feb32d69f}"
 INSTALL_DIR="/root/wazuh-install"
+
+echo "[*] Expanding root partition and filesystem (Proxmox qm resize)"
+if command -v growpart &>/dev/null; then
+  growpart /dev/sda 1 || true
+  resize2fs /dev/sda1 || true
+  echo "[*] Partition expanded. Disk now:"
+  df -h /
+else
+  echo "[!] growpart not available, skipping partition expansion"
+fi
 
 echo "[*] apt update + upgrade"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get -o Dpkg::Options::="--force-confnew" -y upgrade
 
-echo "[*] Fetching wazuh-install.sh (${WAZUH_VERSION})"
+echo "[*] Fetching wazuh-install.sh (${WAZUH_PATCH})"
 mkdir -p "${INSTALL_DIR}"
 cd "${INSTALL_DIR}"
 curl -sO "https://packages.wazuh.com/${WAZUH_VERSION}/wazuh-install.sh"
 chmod +x wazuh-install.sh
+
+echo "[*] Verifying installer SHA256"
+echo "${WAZUH_INSTALL_SHA256}  wazuh-install.sh" | sha256sum --check --strict || {
+  echo "ERROR: wazuh-install.sh checksum mismatch" >&2
+  echo "Expected: ${WAZUH_INSTALL_SHA256}" >&2
+  echo "Got:      $(sha256sum wazuh-install.sh | cut -d' ' -f1)" >&2
+  exit 1
+}
 
 echo "[*] Running all-in-one install"
 bash ./wazuh-install.sh -a -i
@@ -53,6 +73,11 @@ data = re.sub(r"</ossec_config>\s*$", block + "</ossec_config>\n", data, count=1
 with open(path, "w") as f:
     f.write(data)
 PY
+  # Verify patch was applied
+  grep -q "<!-- SecretCon: Suricata EVE -->" "${OSSEC_CONF}" || {
+    echo "ERROR: Suricata EVE listener patch not applied to ossec.conf" >&2
+    exit 1
+  }
 fi
 
 echo "[*] Installing SecretCon Suricata local rules (86600-86604)"
@@ -91,5 +116,12 @@ chmod 0660 /var/ossec/etc/rules/local_rules.xml
 echo "[*] Restarting wazuh-manager"
 systemctl restart wazuh-manager
 systemctl --no-pager status wazuh-manager | head -n 20
+
+echo "[*] Verifying wazuh-manager is active"
+systemctl is-active --quiet wazuh-manager || {
+  echo "ERROR: wazuh-manager failed to start" >&2
+  journalctl -u wazuh-manager -n 50 >&2
+  exit 1
+}
 
 echo "[*] Bootstrap complete."

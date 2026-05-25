@@ -10,7 +10,7 @@ users:
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     lock_passwd: true
     ssh_authorized_keys:
-      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILhXVOz91PuBTg6wsOFz50P4J2oo1Onc6/xGPopzp+ps packer@secretcon-build
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKytw7x6GEnldRMaX2eIvuX4Qszvz9f0ioBROVTUwNFe packer@secretcon-build-20260514
 
 ssh_pwauth: false
 disable_root: true

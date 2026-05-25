@@ -19,14 +19,13 @@ The atomic notes covering each step live in the Vault:
 
 ## Prerequisites
 
-- Windows Server 2016 evaluation ISO staged at
-  `local:iso/windows-server-2016.iso` on the Proxmox node.
-- EFS Software installer pinned in
-  `infrastructure/artifacts/cysvuln/60f3ff1f3cd34dec80fba130ea481f31-efssetup.exe`
-  (SHA-256
-  `60ea3256cd272797675e2ec6ea8e02d8ad51209f1cbf9083bc909284b5331d79`,
-  3,877,866 bytes). The bootstrap aborts on hash mismatch.
+- Windows Server 2016 ISO — [docs/windows-image-inputs.md](../windows-image-inputs.md);
+  stage on Proxmox as `local:iso/windows-server-2016.iso`.
+- CysVuln artifacts via `./scripts/fetch-cysvuln-artifacts.sh` (EFS installer
+  SHA-256 `60ea3256...`, validation MSI). See
+  `infrastructure/artifacts/cysvuln/readme.md`.
 - `nix develop` shell. Packer with the `proxmox` plugin.
+- `.env` from `example.env` with `PROXMOX_*` set.
 
 ### Setting flag values
 
@@ -41,8 +40,9 @@ override per event so flag strings do not carry between runs.
 ## Proxmox-native build
 
 ```
-packer init  infrastructure/packer/proxmox-vm-cysvuln.pkr.hcl
-packer build infrastructure/packer/proxmox-vm-cysvuln.pkr.hcl
+cd infrastructure/packer/cysvuln
+packer init .
+packer build -only=proxmox-iso.win2016-cysvuln .
 ```
 
 Required environment:
@@ -77,13 +77,10 @@ The bootstrap performs, in order:
    load-bearing**: if the service runs as SYSTEM, EDB-42256 collapses
    Flag 1 and Flag 2 into one step and the chain is broken.
 5. Opens TCP/80, TCP/443, and ICMPv4 echo on the Windows Firewall.
-6. Sets HKLM `AlwaysInstallElevated=1`. Registers a logon-trigger
-   scheduled task `CysVulnSeedJoeHKCU` that sets the matching HKCU
-   value the first time `User_Joe` logs in (the HKCU hive only exists
-   under that user's context).
-7. Registers `CysVulnUserFlag`, `CysVulnSeedJoeNotes`,
-   `CysVulnSeedJoeInstaller` logon tasks to drop flag and the
-   reproducibility artifacts on first login.
+6. Sets HKLM `AlwaysInstallElevated=1` and pre-seeds HKCU in User_Joe's
+   `NTUSER.DAT` via direct hive load (no logon scheduled tasks).
+7. Direct-seeds Joe's desktop: `user.txt`, `Notes.txt`, and the EFS
+   installer for reproducibility.
 8. Writes `C:\Users\Administrator\Desktop\root.txt`.
 9. Installs Sysmon (SwiftOnSecurity config) and the Wazuh agent
    against `WAZUH_MANAGER=192.168.61.10` in group `ews`.
@@ -93,22 +90,33 @@ service identity. Inspect before shipping.
 
 ## Verification
 
-`scripts/verify-cysvuln.sh <target-ip>` (TODO) should confirm from an
-attacker vantage:
+### Tier 1 — post-build smoke (`scripts/verify-cysvuln.sh`)
 
-- HTTP/80 reachable, banner `Server: Easy File Sharing Web Server v6.9`.
-- WinRM/5985 reachable for the side-door login.
-- `evil-winrm -i <ip> -u User_Joe -p 'VeryStrongPassword123!@#'` lands
-  a shell.
-- From that shell:
-  `reg query HKLM\Software\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated`
-  returns `1`, and likewise for HKCU.
-- EDB-42256 PoC fires and returns a `User_Joe` shell (not SYSTEM).
-- MSI payload via `msiexec /quiet /qn /i shell.msi` returns SYSTEM.
-- Both flag files exist at their documented paths.
+Automated checks from an attacker vantage (WinRM):
 
-Until that script lands, run those checks by hand per
-[[cysvulnserver-foothold]] and [[cysvulnserver-system-flag-chain]].
+- TCP WinRM port open (use `WINRM_PORT=15985` for local QEMU)
+- HKLM/HKCU `AlwaysInstallElevated = 1`
+- UAC keys `ConsentPromptBehaviorAdmin = 0`, `PromptOnSecureDesktop = 0`
+- `User_Joe` present
+- User and root flag files at documented paths
+- Optional: Wazuh agent active when `WAZUH_API_PASSWORD` is set (skipped if unset)
+
+```
+./scripts/verify-cysvuln.sh <target-ip>
+```
+
+This script does not send EDB exploits or run the MSI privesc chain.
+
+### Tier 2 — exploit chain
+
+Manual or scripted chain validation:
+
+- [docs/cysvulnserver/walkthrough.md](../cysvulnserver/walkthrough.md)
+- `scripts/validate/check_efs69_response.py` (EFS HTTP)
+- `scripts/validate-cysvuln-chain.sh` (full chain, needs a running VM)
+- Reference PoCs: `scripts/validate/reference/`
+
+Prerequisites for Tier 2: Tier 1 green, plus `./scripts/fetch-cysvuln-artifacts.sh`.
 
 ## Telemetry
 
@@ -139,7 +147,7 @@ before this replica replaces VM 108:
 
 ## Related
 
-- `infrastructure/packer/proxmox-vm-cysvuln.pkr.hcl` — the recipe.
+- `infrastructure/packer/cysvuln/proxmox-vm-cysvuln.pkr.hcl` — the recipe.
 - `provisioning/powershell/bootstrap_cysvuln.ps1` — the bootstrap.
 - `infrastructure/artifacts/cysvuln/` — pinned installer + seed files.
 - `docs/runbooks/deploy-windowsvm.md` — sibling EWS runbook.

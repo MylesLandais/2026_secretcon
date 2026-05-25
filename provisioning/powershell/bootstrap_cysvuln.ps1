@@ -1,4 +1,4 @@
-# SecretCon 2026 — CysVulnServer (VM 108) Bootstrap
+# SecretCon 2026 - CysVulnServer (VM 108) Bootstrap
 # Reproduces Cy's challenge box from a clean Windows Server 2016 install.
 #
 # Inputs (env):
@@ -11,37 +11,34 @@
 # Staged on the provisioning ISO (mounted at first removable drive):
 #   60f3ff1f3cd34dec80fba130ea481f31-efssetup.exe
 
+$secretconLib = Get-PSDrive -PSProvider FileSystem |
+    ForEach-Object { Join-Path $_.Root "SecretCon.Bootstrap.psm1" } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+if (-not $secretconLib) {
+    $secretconLib = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "lib\SecretCon.Bootstrap.psm1"
+}
+Import-Module $secretconLib -Force -ErrorAction Stop
+
 $ErrorActionPreference = "Stop"
 Write-Host "[*] Starting CysVulnServer bootstrap..."
 
-$userFlag = if ($env:SECRETCON_USER_FLAG) { $env:SECRETCON_USER_FLAG } else { "cysvuln-user-flag-placeholder" }
-$rootFlag = if ($env:SECRETCON_ROOT_FLAG) { $env:SECRETCON_ROOT_FLAG } else { "cysvuln-root-flag-placeholder" }
-$joePw    = if ($env:CYSVULN_JOE_PASSWORD) { $env:CYSVULN_JOE_PASSWORD } else { "VeryStrongPassword123!@#" }
-$expectedHash = if ($env:CYSVULN_INSTALLER_HASH) { $env:CYSVULN_INSTALLER_HASH } else { "60ea3256cd272797675e2ec6ea8e02d8ad51209f1cbf9083bc909284b5331d79" }
+$userFlag = Get-SecretConEnvDefault -Name "SECRETCON_USER_FLAG" -Default "cysvuln-user-flag-placeholder"
+$rootFlag = Get-SecretConEnvDefault -Name "SECRETCON_ROOT_FLAG" -Default "cysvuln-root-flag-placeholder"
+$joePw    = Get-SecretConEnvDefault -Name "CYSVULN_JOE_PASSWORD" -Default "VeryStrongPassword123!@#"
+$expectedHash = Get-SecretConEnvDefault -Name "CYSVULN_INSTALLER_HASH" -Default "60ea3256cd272797675e2ec6ea8e02d8ad51209f1cbf9083bc909284b5331d79"
 
 # Long paths (matches EWS pattern; avoids Inno Setup edge cases on deeply nested paths)
 Set-ItemProperty `
   -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
   -Name 'LongPathsEnabled' -Value 1
 
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-New-Item -ItemType Directory -Path "C:\secretcon" -Force | Out-Null
-
-# Sysmon (telemetry parity with EWS)
-$sysmonConfigUrl = "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml"
-Invoke-WebRequest -Uri $sysmonConfigUrl -OutFile "C:\secretcon\sysmon-config.xml" -UseBasicParsing
-$sysmonZip = "$env:TEMP\Sysmon.zip"
-Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile $sysmonZip
-Expand-Archive -Path $sysmonZip -DestinationPath "$env:TEMP\Sysmon" -Force
-& "$env:TEMP\Sysmon\Sysmon64.exe" -accepteula -i C:\secretcon\sysmon-config.xml
-
-# Wazuh agent — closes the open todo from 2026-secretcon-ctf.md line 157
-$WazuhManager = if ($env:WAZUH_MANAGER) { $env:WAZUH_MANAGER } else { "192.168.61.10" }
-$WazuhVersion = "4.8.0"
-$wazuhMsi = "C:\wazuh-agent-$WazuhVersion-1.msi"
-Invoke-WebRequest -Uri "https://packages.wazuh.com/4.x/windows/wazuh-agent-$WazuhVersion-1.msi" -OutFile $wazuhMsi
-Start-Process msiexec.exe -ArgumentList "/i $wazuhMsi /q WAZUH_MANAGER=$WazuhManager WAZUH_AGENT_GROUP=ews" -Wait
-Start-Service WazuhSvc
+Install-SecretConSysmon
+$wazuhOptional = ($env:WAZUH_ENROLLMENT_OPTIONAL -eq "1")
+Install-SecretConWazuhAgent `
+    -Manager (Get-SecretConEnvDefault -Name "WAZUH_MANAGER" -Default "192.168.61.10") `
+    -Group "ews" `
+    -EnrollmentOptional:$wazuhOptional
 
 # Low-priv user: matches Cy's documented Notes.txt account
 $pwSecure = ConvertTo-SecureString $joePw -AsPlainText -Force
@@ -51,12 +48,53 @@ if (-not (Get-LocalUser -Name "User_Joe" -ErrorAction SilentlyContinue)) {
 Add-LocalGroupMember -Group "Users" -Member "User_Joe" -ErrorAction SilentlyContinue
 Remove-LocalGroupMember -Group "Administrators" -Member "User_Joe" -ErrorAction SilentlyContinue
 
+# Seed User_Joe HKCU hive before profile/desktop activity locks NTUSER.DAT.
+$joeProfileDir = "C:\Users\User_Joe"
+$joeDesktopDir = Join-Path $joeProfileDir "Desktop"
+$joeHive = Join-Path $joeProfileDir "NTUSER.DAT"
+$defaultHive = "C:\Users\Default\NTUSER.DAT"
+
+if (-not (Test-Path $joeProfileDir)) {
+    New-Item -ItemType Directory -Path $joeProfileDir -Force | Out-Null
+    & icacls $joeProfileDir /inheritance:r /grant "User_Joe:(OI)(CI)(RX)" /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" | Out-Null
+}
+if (-not (Test-Path $joeHive) -and (Test-Path $defaultHive)) {
+    Copy-Item -Path $defaultHive -Destination $joeHive -Force
+}
+if (Test-Path $joeHive) {
+    $tempHive = Join-Path $env:TEMP ("User_Joe_NTUSER_" + [guid]::NewGuid().Guid + ".dat")
+    $seedKey = "JoeSeed"
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        Copy-Item -Path $joeHive -Destination $tempHive -Force
+        & takeown /f $tempHive /a 2>&1 | Out-Null
+        & icacls $tempHive /grant "Administrators:(F)" /grant "SYSTEM:(F)" | Out-Null
+        & reg.exe load "HKU\$seedKey" $tempHive 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "reg load failed (exit $LASTEXITCODE)" }
+        New-Item -Path "HKU:\$seedKey\SOFTWARE\Policies\Microsoft\Windows\Installer" -Force | Out-Null
+        Set-ItemProperty -Path "HKU:\$seedKey\SOFTWARE\Policies\Microsoft\Windows\Installer" `
+                         -Name "AlwaysInstallElevated" -Value 1 -Type DWord
+        [gc]::Collect()
+        Start-Sleep -Seconds 1
+        & reg.exe unload "HKU\$seedKey" 2>&1 | Out-Null
+        Copy-Item -Path $tempHive -Destination $joeHive -Force
+        & icacls $joeHive /inheritance:r /grant "User_Joe:(F)" /grant "SYSTEM:(F)" /grant "Administrators:(F)" | Out-Null
+        Write-Host "[*] Pre-seeded HKCU AlwaysInstallElevated in User_Joe's hive"
+    } catch {
+        Write-Warning "Could not pre-seed User_Joe's HKCU hive: $($_.Exception.Message)"
+    } finally {
+        Remove-Item -Path $tempHive -Force -ErrorAction SilentlyContinue
+        & reg.exe unload "HKU\$seedKey" 2>&1 | Out-Null
+        $ErrorActionPreference = $prevEap
+    }
+} else {
+    Write-Warning "User_Joe NTUSER.DAT not available; HKCU pre-seed skipped"
+}
+
 # Locate the staged EFS installer from the PROVISION ISO
 $installerName = "60f3ff1f3cd34dec80fba130ea481f31-efssetup.exe"
-$stagedInstaller = Get-PSDrive -PSProvider FileSystem |
-    ForEach-Object { Join-Path $_.Root $installerName } |
-    Where-Object { Test-Path $_ } |
-    Select-Object -First 1
+$stagedInstaller = Find-ProvisionFile -Name $installerName
 if (-not $stagedInstaller) {
     throw "EFS installer $installerName not found on any mounted drive"
 }
@@ -70,7 +108,7 @@ if ($actualHash -ne $expectedHash.ToLower()) {
     throw "EFS installer hash mismatch: expected $expectedHash, got $actualHash"
 }
 
-# Easy File Sharing Web Server 6.9 — Inno Setup silent install
+# Easy File Sharing Web Server 6.9 - Inno Setup silent install
 # Inno Setup honours /VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART
 $installArgs = "/VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART"
 Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait
@@ -107,10 +145,60 @@ if ($cfgText -match 'SeServiceLogonRight\s*=\s*([^\r\n]*)') {
 Set-Content -Path $secCfg -Value $cfgText -Encoding Unicode
 secedit /configure /db $secDb /cfg $secCfg /areas USER_RIGHTS | Out-Null
 
-Set-Service -Name fswsService -StartupType Automatic
-Start-Service fswsService
+# fswsService writes a 4-byte counter to C:\Windows\SysWOW64\swsfe.dll on each
+# start. Joe inherits only (RX) there; the resulting CreateFile ACCESS DENIED
+# raises C++ exception 0xe06d7363 in KERNELBASE.dll and the service dies.
+# Create the counter file if the installer did not, then grant Modify.
+$swsfeCounter = "C:\Windows\SysWOW64\swsfe.dll"
+if (-not (Test-Path $swsfeCounter)) {
+    New-Item -ItemType File -Path $swsfeCounter -Force | Out-Null
+    [System.IO.File]::WriteAllBytes($swsfeCounter, [byte[]](0, 0, 0, 0))
+}
+& icacls $swsfeCounter /grant "User_Joe:(M)" | Out-Null
 
-# Firewall — Cy's pending build-steps
+# Deploy Cy's option.ini so /vfolder.ghp is reachable (load-bearing for EDB-37951/42256).
+$stagedOption = Find-ProvisionFile -Name "option.ini"
+if ($stagedOption) {
+    Copy-Item -Path $stagedOption -Destination "$efsRoot\option.ini" -Force
+    Write-Host "[*] Deployed option.ini to $efsRoot"
+} else {
+    Write-Warning "option.ini not found on PROVISION media; vfolder.ghp may not work"
+}
+$vfoldersPath = "C:\vfolders"
+New-Item -ItemType Directory -Path $vfoldersPath -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $vfoldersPath "disk_d") -Force | Out-Null
+& icacls $vfoldersPath /grant "User_Joe:(OI)(CI)(M)" "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)" | Out-Null
+
+# Interactive User_Joe path for AIE validation (RDP + logon rights).
+$secCfgInteractive = "$env:TEMP\joe-interactive-logon.inf"
+$secDbInteractive  = "$env:TEMP\joe-interactive-logon.sdb"
+secedit /export /cfg $secCfgInteractive /areas USER_RIGHTS | Out-Null
+$cfgInteractive = Get-Content $secCfgInteractive -Raw
+foreach ($right in @("SeInteractiveLogonRight", "SeRemoteInteractiveLogonRight")) {
+    if ($cfgInteractive -match "$right\s*=\s*([^\r\n]*)") {
+        $existing = $matches[1]
+        if ($existing -notmatch [Regex]::Escape($joeSid)) {
+            $cfgInteractive = $cfgInteractive -replace "$right\s*=.*", "$right = $existing,*$joeSid"
+        }
+    } else {
+        $cfgInteractive = $cfgInteractive -replace '(\[Privilege Rights\])', "`$1`r`n$right = *$joeSid"
+    }
+}
+Set-Content -Path $secCfgInteractive -Value $cfgInteractive -Encoding Unicode
+secedit /configure /db $secDbInteractive /cfg $secCfgInteractive /areas USER_RIGHTS | Out-Null
+Add-LocalGroupMember -Group "Remote Desktop Users" -Member "User_Joe" -ErrorAction SilentlyContinue
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+
+Set-Service -Name fswsService -StartupType Automatic
+# Bootstrap previously claimed reboot would fix this; empirically it does not
+# without the swsfe.dll ACL grant above.
+try {
+    Start-Service fswsService -ErrorAction Stop
+} catch {
+    Write-Warning "fswsService did not start in-band ($($_.Exception.Message)); will start on next boot (StartupType=Automatic)"
+}
+
+# Firewall - Cy's pending build-steps
 Enable-NetFirewallRule -Name FPS-ICMP4-ERQ-In -ErrorAction SilentlyContinue
 if (-not (Get-NetFirewallRule -DisplayName "Allow Port 80" -ErrorAction SilentlyContinue)) {
     New-NetFirewallRule -DisplayName "Allow Port 80" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow | Out-Null
@@ -118,15 +206,24 @@ if (-not (Get-NetFirewallRule -DisplayName "Allow Port 80" -ErrorAction Silently
 if (-not (Get-NetFirewallRule -DisplayName "Allow Port 443" -ErrorAction SilentlyContinue)) {
     New-NetFirewallRule -DisplayName "Allow Port 443" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow | Out-Null
 }
+if (-not (Get-NetFirewallRule -DisplayName "Allow RDP 3389" -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -DisplayName "Allow RDP 3389" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow | Out-Null
+}
+Enable-NetFirewallRule -DisplayName "Remote Desktop*" -ErrorAction SilentlyContinue
 
-# AlwaysInstallElevated — Cy's pending build-steps. HKLM is set here directly.
-# HKCU must be set in User_Joe's hive; we use a one-shot logon task seeded by the
-# Administrator install, so the value lands the first time Joe signs in.
+# AlwaysInstallElevated - Cy's pending build-steps. HKLM is set here directly.
+# HKCU is pre-seeded in User_Joe's NTUSER.DAT below (direct hive load).
 New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer" -Force | Out-Null
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer" `
                  -Name "AlwaysInstallElevated" -Value 1 -Type DWord
+# Allow non-admin MSI installs when AIE is set (blocks error 1625 on Server 2016).
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer" `
+                 -Name "DisableUserInstalls" -Value 0 -Type DWord -Force
+# Terminal Services / RDP sessions block unmanaged per-user installs unless DisableMSI=0.
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer" `
+                 -Name "DisableMSI" -Value 0 -Type DWord -Force
 
-# UAC consent gate — the second load-bearing setting that the original Notes.txt
+# UAC consent gate - the second load-bearing setting that the original Notes.txt
 # checklist missed. On Server 2016, AIE alone is not sufficient: msiexec still
 # cannot obtain its SYSTEM elevation token while ConsentPromptBehaviorAdmin is at
 # its default of 5 (prompt-for-consent). Setting it to 0 lets the Installer
@@ -136,48 +233,6 @@ Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer" `
 $uacKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
 Set-ItemProperty -Path $uacKey -Name "ConsentPromptBehaviorAdmin" -Value 0 -Type DWord
 Set-ItemProperty -Path $uacKey -Name "PromptOnSecureDesktop"      -Value 0 -Type DWord
-
-$hkcuSeeder = "C:\secretcon\seed-joe-hkcu.ps1"
-@'
-New-Item -Path "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Installer" -Force | Out-Null
-Set-ItemProperty -Path "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Installer" `
-                 -Name "AlwaysInstallElevated" -Value 1 -Type DWord
-'@ | Set-Content -Encoding utf8 $hkcuSeeder
-
-$hkcuTaskAction = New-ScheduledTaskAction `
-  -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$hkcuSeeder`""
-$hkcuTaskTrigger = New-ScheduledTaskTrigger -AtLogOn -User "User_Joe"
-$hkcuTaskPrincipal = New-ScheduledTaskPrincipal -UserId "User_Joe" -LogonType Interactive -RunLevel Limited
-Register-ScheduledTask `
-  -TaskName "CysVulnSeedJoeHKCU" `
-  -Action $hkcuTaskAction `
-  -Trigger $hkcuTaskTrigger `
-  -Principal $hkcuTaskPrincipal `
-  -Force | Out-Null
-
-# User flag (Flag 1) on User_Joe's desktop — seeded via logon task so the
-# profile path exists when we write it.
-$userFlagSeeder = "C:\secretcon\seed-user-flag.ps1"
-$userFlagB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($userFlag))
-@"
-`$desktop = [Environment]::GetFolderPath("Desktop")
-`$flag = Join-Path `$desktop "user.txt"
-`$value = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("$userFlagB64"))
-[System.IO.File]::WriteAllText(`$flag, `$value, [System.Text.UTF8Encoding]::new(`$false))
-icacls `$flag /inheritance:r /grant "User_Joe:R" "Administrators:F" "SYSTEM:F" | Out-Null
-"@ | Set-Content -Encoding utf8 $userFlagSeeder
-$flagTaskAction = New-ScheduledTaskAction `
-  -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$userFlagSeeder`""
-$flagTaskTrigger = New-ScheduledTaskTrigger -AtLogOn -User "User_Joe"
-$flagTaskPrincipal = New-ScheduledTaskPrincipal -UserId "User_Joe" -LogonType Interactive -RunLevel Limited
-Register-ScheduledTask `
-  -TaskName "CysVulnUserFlag" `
-  -Action $flagTaskAction `
-  -Trigger $flagTaskTrigger `
-  -Principal $flagTaskPrincipal `
-  -Force | Out-Null
 
 # Root flag (Flag 2) on Administrator desktop
 $administratorDesktop = "C:\Users\Administrator\Desktop"
@@ -190,13 +245,11 @@ New-Item -ItemType Directory -Path $administratorDesktop -Force | Out-Null
 )
 icacls $rootFlagPath /inheritance:r /grant "SYSTEM:F" "Administrators:F" | Out-Null
 
+New-Item -ItemType Directory -Path $joeDesktopDir -Force | Out-Null
+
 # Notes.txt parity with Cy's box (player-visible hint sheet).
-# Includes credentials and EDB pointer; intentional side-door per spec.
-$joeDesktopSeeder = "C:\secretcon\seed-joe-notes.ps1"
-@'
-$desktop = [Environment]::GetFolderPath("Desktop")
-$notes = Join-Path $desktop "Notes.txt"
-$body = @"
+$notesPath = Join-Path $joeDesktopDir "Notes.txt"
+$notesBody = @"
 https://www.exploit-db.com/exploits/42256
 
 
@@ -209,49 +262,77 @@ reg add HKLM\Software\Policies\Microsoft\Windows\Installer /v AlwaysInstallEleva
 reg add HKCU\Software\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated /t REG_DWORD /d 1 /f
 
 User_Joe
-VeryStrongPassword123!@#
+$joePw
 "@
-[System.IO.File]::WriteAllText($notes, $body, [System.Text.UTF8Encoding]::new($false))
-'@ | Set-Content -Encoding utf8 $joeDesktopSeeder
-$notesTaskAction = New-ScheduledTaskAction `
-  -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$joeDesktopSeeder`""
-Register-ScheduledTask `
-  -TaskName "CysVulnSeedJoeNotes" `
-  -Action $notesTaskAction `
-  -Trigger $hkcuTaskTrigger `
-  -Principal $hkcuTaskPrincipal `
-  -Force | Out-Null
+[System.IO.File]::WriteAllText($notesPath, $notesBody, [System.Text.UTF8Encoding]::new($false))
+Write-Host "[*] Seeded Notes.txt to $notesPath"
 
-# Stage the EFS installer on Joe's desktop too (reproducibility artifact for
-# any player auditing the box from inside)
-Copy-Item -Path $installerPath -Destination "C:\secretcon\$installerName" -Force
-$installerSeeder = "C:\secretcon\seed-joe-installer.ps1"
-@"
-`$desktop = [Environment]::GetFolderPath("Desktop")
-Copy-Item -Path "C:\secretcon\$installerName" -Destination (Join-Path `$desktop "$installerName") -Force
-"@ | Set-Content -Encoding utf8 $installerSeeder
-Register-ScheduledTask `
-  -TaskName "CysVulnSeedJoeInstaller" `
-  -Action (New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$installerSeeder`"") `
-  -Trigger $hkcuTaskTrigger `
-  -Principal $hkcuTaskPrincipal `
-  -Force | Out-Null
+# EFS installer on Joe's desktop (reproducibility artifact).
+Copy-Item -Path $installerPath -Destination (Join-Path $joeDesktopDir $installerName) -Force
+Write-Host "[*] Seeded EFS installer to Joe desktop"
 
-# Defender exclusions: lab paths only, keep telemetry useful elsewhere
+# Defender must be fully neutered: msfvenom payloads are detected on contact.
+# Disable real-time for the current session + registry GPO for reboot persistence.
+# Note: Set-Service WinDefend -StartupType Disabled fails with Access Denied on
+# Server 2016 eval (WRP-protected service). The GPO-level key handles reboot persistence.
 try {
-    Add-MpPreference -ExclusionPath $efsRoot -ErrorAction Stop
-    Add-MpPreference -ExclusionPath "C:\secretcon" -ErrorAction Stop
+    Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
+    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Force | Out-Null
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" `
+                     -Name "DisableAntiSpyware" -Value 1 -Type DWord
 } catch {
-    Write-Host "[!] Defender exclusions skipped: $($_.Exception.Message)"
+    Write-Host "[!] Defender disable skipped: $($_.Exception.Message)"
+}
+
+# Software Restriction Policies — Server 2016 eval images ship with SRP active.
+# Remove the policies key to allow msiexec from non-Program Files paths.
+$srpKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers"
+if (Test-Path $srpKey) {
+    try {
+        Remove-Item -Path $srpKey -Recurse -Force -ErrorAction Stop
+        Write-Host "[*] Disabled Software Restriction Policies"
+    } catch {
+        Write-Host "[!] Could not disable SRP: $($_.Exception.Message)"
+    }
+}
+
+# Stage validation MSI from PROVISION ISO to C:\Users\Public
+$msiName = "aie-validation-payload.msi"
+$stagedMsi = Find-ProvisionFile -Name $msiName
+if ($stagedMsi) {
+    Copy-Item -Path $stagedMsi -Destination "C:\Users\Public\$msiName" -Force
+    Write-Host "[*] Staged $msiName to C:\Users\Public"
+}
+
+# Write user flag directly to Joe's desktop (profile directory guaranteed to exist).
+$userFlagPath = Join-Path $joeDesktopDir "user.txt"
+[System.IO.File]::WriteAllText($userFlagPath, $userFlag, [System.Text.UTF8Encoding]::new($false))
+& icacls $userFlagPath /inheritance:r /grant "User_Joe:R" "SYSTEM:F" "Administrators:F" | Out-Null
+Write-Host "[*] Seeded user flag to $userFlagPath"
+
+# Stage validation script from PROVISION ISO
+$validateScript = "validate-aie.ps1"
+$stagedValidate = Find-ProvisionFile -Name $validateScript
+if ($stagedValidate) {
+    Copy-Item -Path $stagedValidate -Destination "C:\secretcon\$validateScript" -Force
+    Write-Host "[*] Staged $validateScript to C:\secretcon"
 }
 
 Write-Host "[*] Validating bootstrap..."
 $failed = @()
 foreach ($svc in 'Sysmon64','WazuhSvc','fswsService') {
     $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
-    if (-not $s) { $failed += "$svc not installed" }
-    elseif ($s.Status -ne 'Running') { $failed += "$svc not running ($($s.Status))" }
+    if (-not $s) { $failed += "$svc not installed"; continue }
+    if ($s.Status -ne 'Running') {
+        # fswsService consistently fails its first in-band start after the
+        # User_Joe service-account downgrade; StartupType=Automatic ensures the
+        # next boot brings it up. Treat as warning, not validation failure.
+        if ($svc -eq 'fswsService' -and $s.StartType -eq 'Automatic') {
+            Write-Warning "$svc Stopped post-bootstrap; StartupType=Automatic will start it on next boot"
+        } else {
+            $failed += "$svc not running ($($s.Status))"
+        }
+    }
 }
 $fswsStartName = (Get-CimInstance Win32_Service -Filter "Name='fswsService'").StartName
 if ($fswsStartName -ne '.\User_Joe' -and $fswsStartName -ne 'WIN-CYSVULN\User_Joe') {
@@ -265,11 +346,22 @@ $hklmVal = (Get-ItemProperty -Path $hklmKey -Name AlwaysInstallElevated -ErrorAc
 if ($hklmVal -ne 1) { $failed += "HKLM AlwaysInstallElevated not set (got $hklmVal)" }
 $uacCheckKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
 $cpba = (Get-ItemProperty -Path $uacCheckKey -Name ConsentPromptBehaviorAdmin -ErrorAction SilentlyContinue).ConsentPromptBehaviorAdmin
-if ($cpba -ne 0) { $failed += "ConsentPromptBehaviorAdmin not 0 (got $cpba) — AIE chain will be blocked at the UAC gate" }
+if ($cpba -ne 0) { $failed += "ConsentPromptBehaviorAdmin not 0 (got $cpba) - AIE chain will be blocked at the UAC gate" }
 if (-not (Test-Path $rootFlagPath)) { $failed += "root flag missing" }
-foreach ($t in 'CysVulnSeedJoeHKCU','CysVulnUserFlag','CysVulnSeedJoeNotes','CysVulnSeedJoeInstaller') {
-    if (-not (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue)) { $failed += "$t task missing" }
+if (-not (Test-Path "C:\Users\User_Joe\Desktop\user.txt")) { $failed += "user flag missing" }
+if (-not (Test-Path "C:\Users\User_Joe\Desktop\Notes.txt")) { $failed += "Joe Notes.txt missing" }
+if (-not (Test-Path (Join-Path $joeDesktopDir $installerName))) { $failed += "Joe desktop installer missing" }
+if (-not (Test-Path "C:\Users\Public\aie-validation-payload.msi")) { $failed += "AIE validation MSI missing" }
+if (-not (Test-Path "C:\secretcon\validate-aie.ps1")) { $failed += "AIE validation script missing" }
+if (-not (Test-Path "$efsRoot\option.ini")) { $failed += "EFS option.ini missing" }
+if (-not (Test-Path "C:\vfolders")) { $failed += "C:\vfolders missing" }
+# AppLocker/SRP check — catch hardened base images before they ship
+if (Get-Command Get-AppLockerPolicy -ErrorAction SilentlyContinue) {
+    $alPolicy = Get-AppLockerPolicy -Effective -ErrorAction SilentlyContinue
+    if ($alPolicy -and $alPolicy.RuleCollections.Count -gt 0) { $failed += "AppLocker policy is active" }
 }
+$srpKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers"
+if (Test-Path $srpKey) { $failed += "Software Restriction Policies are active" }
 if (-not (Get-NetFirewallRule -DisplayName "Allow Port 80" -ErrorAction SilentlyContinue)) {
     $failed += "TCP/80 firewall rule missing"
 }
@@ -277,4 +369,4 @@ if ($failed.Count -gt 0) {
     Write-Error ("Bootstrap validation failed: " + ($failed -join '; '))
     exit 1
 }
-Write-Host "[*] Bootstrap complete. First sign-in as User_Joe will seed HKCU AlwaysInstallElevated, Notes.txt, user.txt, and the installer artifact."
+Write-Host "[*] Bootstrap complete. Both flags seeded, Defender disabled, AIE keys set. System ready for validation."

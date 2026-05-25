@@ -20,18 +20,30 @@ this repo is intentional OSINT material for participants of
   the topology in `docs/architecture.md` are all part of the training
   scenario.
 
-Do not file issues asking us to scrub these. Real production secrets
-(keys, sops files, `.env`, dashboard admin passwords, WireGuard endpoint
-config) must never land in this repo. If you find a real secret that
-should not be there, open a private security advisory rather than a
-public issue.
+Do not file issues asking us to scrub these.
+
+## Real secrets (not CTF material)
+
+These must never land in git:
+
+- `.env` (copy from `example.env`)
+- `wazuh-creds-*.txt`, `*.pem`, `provisioning/ssh/packer_ed25519` (private key)
+- Live Proxmox or Wazuh passwords that match committed CTF defaults
+
+Rotate lab infrastructure passwords before making the repo public if they
+reuse values like `PizzaMan123!` from challenge autounattend files.
+
+If you find a real secret in history, contact maintainers privately rather
+than opening a public issue with the value.
 
 ## Development workflow
 
 1. Fork the repo or create a feature branch off `main`.
 2. Make your changes. Run `nix develop` to enter the dev shell.
 3. Open a pull request against `main`. Squash-merge is the default.
-4. CI will run `commit-lint` and `flake-check` on your PR.
+4. CI will run `commit-lint` and `flake-check` on your PR (cheap checks only).
+5. Run `./scripts/test-local.sh` before pushing. VM builds are validated on
+   your hypervisor (QEMU, Proxmox, VMware, or Hyper-V), not in GitHub Actions.
 
 ## Commit message policy
 
@@ -101,8 +113,9 @@ scripts/             Local developer scripts
 
 `.claude/skills/` holds skill definitions read by AI coding assistants
 (Claude Code, Cursor, etc.) when they open the repo. They are loaded as
-project context, scoped to a vendor or tool: `packer/`, `proxmox/`,
-`wazuh/`, `opnsense/`, `terraform/`.
+project context, scoped to a vendor or tool: `nix/`, `packer/`, `proxmox/`,
+`wazuh/`, `windows-bootstrap/`, `validate-aie/`, `hyperv/`, `opnsense/`,
+`terraform/`.
 
 Contributors do not need to use the skills directly. The expectation is
 that PRs touching tool X also update `.claude/skills/<X>/SKILL.md` in
@@ -127,7 +140,7 @@ The lab supports two build paths for the Win10 EWS challenge VM:
   builder). Builds a qcow2 on your workstation. Fast iteration, runs in
   software-only QEMU, exposes RDP/WinRM/VNC on `localhost`. Use this
   while developing autounattend changes or bootstrap scripts.
-- **Proxmox-native** (`packer build infrastructure/packer/proxmox-vm.pkr.hcl`).
+- **Proxmox-native** (`cd infrastructure/packer/ews && packer build -only=proxmox-iso.win10-ews .`).
   Builds directly on the Proxmox host using the `proxmox-iso` builder.
   Slower iteration, produces the actual lab VM on `vmbr1`. Use this
   once the local build is green.
@@ -148,6 +161,13 @@ Bug reports, lab access requests, and challenge ideas all go in GitHub
 Issues. Lab-access requests should include your handle on the SecretCon
 Discord or other community channel so we can verify membership.
 
-## Code of conduct
+## Pre-publish checklist (maintainers)
 
-By participating you agree to the [Contributor Covenant](CODE_OF_CONDUCT.md).
+Before a public push or event handoff:
+
+1. `git status` — never `git add .`
+2. Confirm `.env`, `wazuh-creds-*.txt`, `*.qcow2`, and `artifacts/` are not staged
+3. `./scripts/test-local.sh`
+4. Dry-run one build path per hypervisor you support (see `docs/windows-image-inputs.md`)
+5. Rotate live Proxmox/Wazuh passwords away from committed CTF defaults
+6. `./scripts/fetch-cysvuln-artifacts.sh` on a fresh clone to verify artifact docs
