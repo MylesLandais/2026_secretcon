@@ -105,6 +105,17 @@
           <Value>PizzaMan123!</Value>
           <PlainText>true</PlainText>
         </AdministratorPassword>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>packer</Name>
+            <Group>Administrators</Group>
+            <Password>
+              <Value>packer</Value>
+              <PlainText>true</PlainText>
+            </Password>
+            <Description>Packer SSH user (Hyper-V / VMware builds; idle for QEMU)</Description>
+          </LocalAccount>
+        </LocalAccounts>
       </UserAccounts>
       <AutoLogon>
         <Username>Administrator</Username>

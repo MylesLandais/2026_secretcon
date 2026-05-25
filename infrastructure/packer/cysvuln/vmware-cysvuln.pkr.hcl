@@ -62,7 +62,7 @@ build {
 
   provisioner "powershell" {
     script           = local.bootstrap_script
-    environment_vars = local.bootstrap_env
+    environment_vars = concat(local.bootstrap_env, ["WAZUH_ENROLLMENT_OPTIONAL=1"])
   }
 
   provisioner "powershell" {
