@@ -112,7 +112,7 @@ EOF
 fi
 
 # SharpUp.exe (GhostPack) — vendored, gitignored. Optional; the
-# scripts/run-sharpup.sh helper will refuse to run if missing, but the
+# scripts/run-joe-tool.sh sharpup helper will refuse to run if missing, but the
 # CysVuln packer/validation pipeline does not need it.
 if [ -f "$SHARPUP_PATH" ]; then
     if [ -n "$SHARPUP_SHA256" ]; then
@@ -136,7 +136,7 @@ else
 [!] ${SHARPUP_NAME} not vendored at:
     $SHARPUP_PATH
 
-    Optional. Only needed for ./scripts/run-sharpup.sh. Build it from
+    Optional. Only needed for ./scripts/run-joe-tool.sh sharpup. Build it from
     source (no upstream prebuilt releases):
 
       git clone https://github.com/GhostPack/SharpUp

@@ -11,7 +11,7 @@
 # If ANY of these checks pass, AIE elevation is confirmed.
 #
 # For the equivalent run against a real msfvenom-built MSI (player-tool
-# parity), see ../scripts/run-msfvenom-aie.sh and ../docs/cysvulnserver/msfvenom.md.
+# parity), see ../scripts/run-joe-tool.sh msfvenom-aie and ../docs/cysvulnserver/msfvenom.md.
 
 $ErrorActionPreference = "Stop"
 
@@ -123,7 +123,7 @@ if ($elevationEvidence) {
     Write-Host "[+] Player steps:"
     Write-Host "[+]   1. EDB-42256 on port 80 -> User_Joe shell"
     Write-Host "[+]   2. msfvenom -p windows/exec CMD='...' -f msi -o p.msi EXITFUNC=thread"
-    Write-Host "[+]      (or use ./scripts/run-msfvenom-aie.sh on the attacker for the"
+    Write-Host "[+]      (or use ./scripts/run-joe-tool.sh msfvenom-aie on the attacker for the"
     Write-Host "[+]       full build+stage+trigger flow — see docs/cysvulnserver/msfvenom.md)"
     Write-Host "[+]   3. Upload p.msi to victim (via EFS upload or certutil)"
     Write-Host "[+]   4. msiexec /quiet /qn /i p.msi"

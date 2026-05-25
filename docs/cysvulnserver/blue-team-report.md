@@ -146,7 +146,7 @@ whose CustomAction is a benign `copy` command. A real attacker would:
 2. Use `msfvenom -p windows/exec` instead of the wixl probe - the MSI
    would intentionally roll back (`FailInstallation`), tripping rule
    `100515` (MsiInstaller EID 1042). Our loop did not exercise the
-   msfvenom path (see [`scripts/run-msfvenom-aie.sh`](../../scripts/run-msfvenom-aie.sh)
+   msfvenom path (see [`scripts/run-joe-tool.sh msfvenom-aie`](../../scripts/run-joe-tool.sh)
    and [msfvenom.md](msfvenom.md) for that flow); a follow-up loop run
    that wraps it would populate rule `100515` and `100517`.
 3. Use a meterpreter payload that touches lsass - rule `100514` would
@@ -232,7 +232,7 @@ Across all three iterations:
   category, since `aie-flag.txt` is text) and through Sysmon EID 11.
   `100513` should be broadened (see recommendations).
 - **msfvenom-specific signals (`100515`, `100516`, `100517`)**: this
-  loop ran the wixl probe path, not `run-msfvenom-aie.sh`. The
+  loop ran the wixl probe path, not `run-joe-tool.sh msfvenom-aie`. The
   rollback-pattern detection (`100515` - MsiInstaller EID 1042) and
   the `MainEngineThread is returning 1603` syslog detection (`100517`)
   would only fire on a msfvenom run. A follow-up loop iteration that
@@ -328,7 +328,7 @@ Sized per rule based on what this run actually observed:
 - **`msiexec` rollback / 1603 signal (`100515` / `100517`) requires
   the msfvenom path**. This loop ran the wixl probe path
   (`AIE Response Probe` MSI). A follow-up loop that wraps
-  `scripts/run-msfvenom-aie.sh` would populate them. The agent.conf
+  `scripts/run-joe-tool.sh msfvenom-aie` would populate them. The agent.conf
   subscription is in place for both - only the validator path
   differs.
 - **Defender is disabled by design** on the CysVuln image, so we have

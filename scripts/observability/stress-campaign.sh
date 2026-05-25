@@ -440,9 +440,9 @@ JSON
         --user "$ADMIN_USER" --password "$ADMIN_PW" --profile-user "$JOE_USER" \
         --out-json
 
-    run_phase "$i" 06a winpeas "${REPO_ROOT}/scripts/run-winpeas.sh" 127.0.0.1
+    run_phase "$i" 06a winpeas "${REPO_ROOT}/scripts/run-joe-tool.sh" winpeas 127.0.0.1
 
-    run_phase "$i" 06b sharpup "${REPO_ROOT}/scripts/run-sharpup.sh" 127.0.0.1
+    run_phase "$i" 06b sharpup "${REPO_ROOT}/scripts/run-joe-tool.sh" sharpup 127.0.0.1
 
     run_phase "$i" 07 privesc "${REPO_ROOT}/scripts/validate-cysvuln-aie-joe.sh" 127.0.0.1
 

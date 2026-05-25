@@ -22,11 +22,11 @@ the AIE chain documented in [walkthrough.md](walkthrough.md).
 nix develop
 ./scripts/run-local-cysvuln.sh
 ./scripts/cysvuln-local-prep.sh 127.0.0.1     # if first boot
-./scripts/run-winpeas.sh 127.0.0.1
+./scripts/run-joe-tool.sh winpeas 127.0.0.1
 ```
 
 Env knobs documented at the top of
-[scripts/run-winpeas.sh](../../scripts/run-winpeas.sh):
+[scripts/run-joe-tool.sh](../../scripts/run-joe-tool.sh):
 
 | Env | Default | Purpose |
 |---|---|---|
@@ -143,7 +143,7 @@ above). In a player-natural EFS callback shell that group is absent.
 - `C:\Users\User_Joe\Desktop\Notes.txt` (player hint sheet with creds and
   the EDB-42256 link) is **not** in this run's output: it lives in
   the `filesinfo` / `fileanalysis` modules, which we skipped to keep the
-  report under 100 KiB. Add `WINPEAS_LOCAL=… ./scripts/run-winpeas.sh ...`
+  report under 100 KiB. Add `WINPEAS_LOCAL=… ./scripts/run-joe-tool.sh winpeas ...`
   with a modified args set if you want to see it surfaced.
 
 ## Limitations
@@ -159,9 +159,9 @@ above). In a player-natural EFS callback shell that group is absent.
   not revoked by the script.
 - `fileanalysis`, `filesinfo`, `networkinfo`, `windowscreds`, and
   `browserinfo` modules are skipped by the default invocation — re-run
-  with `WINPEAS_LOCAL=… ./scripts/run-winpeas.sh ...` after editing
+  with `WINPEAS_LOCAL=… ./scripts/run-joe-tool.sh winpeas ...` after editing
   `WINPEAS_ARGS` in
-  [scripts/validate/run_winpeas_as_joe.py](../../scripts/validate/run_winpeas_as_joe.py)
+  [scripts/validate/run_joe_tool.py](../../scripts/validate/run_joe_tool.py)
   to capture them.
 
 ## Cross-references

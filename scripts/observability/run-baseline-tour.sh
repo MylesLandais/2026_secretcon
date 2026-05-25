@@ -240,9 +240,9 @@ phase 06 aie-audit python3 "${REPO_ROOT}/scripts/validate/audit_aie.py" \
     --target "$TARGET" --port "$WINRM_PORT" \
     --user "$ADMIN_USER" --password "$ADMIN_PW" --profile-user "$JOE_USER"
 
-phase 06a winpeas "${REPO_ROOT}/scripts/run-winpeas.sh" "$TARGET"
+phase 06a winpeas "${REPO_ROOT}/scripts/run-joe-tool.sh" winpeas "$TARGET"
 
-phase 06b sharpup "${REPO_ROOT}/scripts/run-sharpup.sh" "$TARGET"
+phase 06b sharpup "${REPO_ROOT}/scripts/run-joe-tool.sh" sharpup "$TARGET"
 
 phase 07 privesc "${REPO_ROOT}/scripts/validate-cysvuln-aie-joe.sh" "$TARGET"
 

@@ -260,7 +260,7 @@ For the textbook PEAS-style enumeration view, drive winPEAS from the
 attacker host:
 
 ```bash
-./scripts/run-winpeas.sh 127.0.0.1
+./scripts/run-joe-tool.sh winpeas 127.0.0.1
 ```
 
 The wrapper downloads `winPEASx64.exe` from the upstream peass-ng release,
@@ -296,7 +296,7 @@ AIE headline):
 
 ```bash
 ./scripts/fetch-cysvuln-artifacts.sh   # warns if SharpUp.exe absent
-./scripts/run-sharpup.sh 127.0.0.1
+./scripts/run-joe-tool.sh sharpup 127.0.0.1
 ```
 
 Uses the same `joe_task_runner` harness as Phase 6a. SharpUp has no
@@ -400,10 +400,10 @@ cysvuln-root-flag-placeholder
 | Foothold | `check_efs69_response.py --mode callback --service-port 80` | `whoami` → `user_joe` |
 | User flag | `type user.txt` | `flag{cysvuln-user-local-test}` |
 | AIE audit | `audit_aie.py --profile-user User_Joe` | `chain response expected: True` |
-| winPEAS (optional) | `./scripts/run-winpeas.sh 127.0.0.1` | `AlwaysInstallElevated set to 1 in HKLM!` / `... in HKCU!` |
-| SharpUp (optional) | `./scripts/run-sharpup.sh 127.0.0.1` | `=== Always Install Elevated ===  HKCU: 1  HKLM: 1` |
+| winPEAS (optional) | `./scripts/run-joe-tool.sh winpeas 127.0.0.1` | `AlwaysInstallElevated set to 1 in HKLM!` / `... in HKCU!` |
+| SharpUp (optional) | `./scripts/run-joe-tool.sh sharpup 127.0.0.1` | `=== Always Install Elevated ===  HKCU: 1  HKLM: 1` |
 | Privesc | `msiexec /quiet /i aie-probe.msi` | CustomActionSchedule in log |
-| msfvenom MSI (optional) | `nix develop .#kali; ./scripts/run-msfvenom-aie.sh 127.0.0.1` | `aie-msfvenom-flag.txt == root.txt` |
+| msfvenom MSI (optional) | `nix develop .#kali; ./scripts/run-joe-tool.sh msfvenom-aie 127.0.0.1` | `aie-msfvenom-flag.txt == root.txt` |
 | SIEM capture (blue team) | `./scripts/observability-loop.sh` | `summary.csv` + `msiexec-timeline.json` per iter (see [blue-team-report.md](blue-team-report.md)) |
 | Baseline observability tour | `./scripts/observability/run-baseline-tour.sh` | Per-phase `matrix.md` + winPEAS/SharpUp/privesc SIEM slices (see [baseline-observability.md](baseline-observability.md)) |
 | **10x stress campaign (red + blue)** | `./scripts/observability/stress-campaign.sh --iterations 10` | `campaign-summary.csv` + per-iter `red-scorecard.json` / `blue-scorecard.json` (see [stress-campaign-report.md](stress-campaign-report.md), [ctf-issues-log.md](ctf-issues-log.md)) |
@@ -440,12 +440,12 @@ nix develop .#kali
 ### msfvenom
 
 Superseded by the [msfvenom.md](msfvenom.md) writeup —
-`nix develop .#kali; ./scripts/run-msfvenom-aie.sh 127.0.0.1` is the
+`nix develop .#kali; ./scripts/run-joe-tool.sh msfvenom-aie 127.0.0.1` is the
 end-to-end automated path (msfvenom build -> HTTP stage -> interactive
 User_Joe -> flag cross-check).
 
 ### SharpUp
 
 Superseded by [Phase 6b](#phase-6b--sharpup-enumeration-optional) and
-[sharpup.md](sharpup.md) — `./scripts/run-sharpup.sh 127.0.0.1` is the
+[sharpup.md](sharpup.md) — `./scripts/run-joe-tool.sh sharpup 127.0.0.1` is the
 automated path.

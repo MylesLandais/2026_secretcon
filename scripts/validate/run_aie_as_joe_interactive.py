@@ -13,6 +13,8 @@ import subprocess
 import sys
 import time
 
+from joe_task_runner import quote_ps_single, run_ps, winrm_session
+
 DEFAULT_FLAG_PATH = r"C:\Users\Public\aie-flag.txt"
 DEFAULT_RESULT_PATH = r"C:\Users\Public\aie-validation-result.txt"
 DEFAULT_MSI_PATH = r"C:\Users\Public\aie-validation-payload.msi"
@@ -20,27 +22,6 @@ DEFAULT_LOG_PATH = r"C:\Users\Public\aie-joe-validation.log"
 ROOT_PATH = r"C:\Users\Administrator\Desktop\root.txt"
 VALIDATE_SCRIPT = r"C:\secretcon\validate-aie.ps1"
 PSEXEC = r"C:\Users\Public\PsExec.exe"
-
-
-def winrm_session(target: str, port: int, user: str, password: str):
-    try:
-        import winrm
-    except ImportError as exc:
-        raise SystemExit("pywinrm required (nix develop)") from exc
-    return winrm.Session(
-        f"http://{target}:{port}/wsman",
-        auth=(user, password),
-        transport="ntlm",
-        operation_timeout_sec=300,
-        read_timeout_sec=310,
-    )
-
-
-def run_ps(session, script: str) -> tuple[int, str, str]:
-    r = session.run_ps(script)
-    out = r.std_out.decode(errors="replace")
-    err = r.std_err.decode(errors="replace")
-    return r.status_code, out, err
 
 
 def clear_artifacts(session, flag_path: str, result_path: str) -> None:
@@ -83,7 +64,7 @@ def psexec_launch(
     msi_path: str,
     log_path: str,
 ) -> tuple[int, str]:
-    joe_pw = joe_password.replace("'", "''")
+    joe_pw = quote_ps_single(joe_password)
     i_args = f"-i {session_id}" if session_id else "-i"
     d_flag = "-d " if detach else ""
     ps = f"""
@@ -187,7 +168,9 @@ def main() -> int:
     )
     args = p.parse_args()
 
-    session = winrm_session(args.target, args.winrm_port, "Administrator", args.admin_password)
+    session = winrm_session(
+        args.target, args.winrm_port, "Administrator", args.admin_password
+    )
 
     print("[*] Clearing prior AIE artifacts...")
     clear_artifacts(session, args.flag_path, args.result_path)

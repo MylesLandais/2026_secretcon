@@ -46,8 +46,8 @@ noted. SecretCon custom rules are `100501`–`100517`.
 | 04 | Phase 4 | `check_efs69_response.py --mode exec` | 0s | 10 | 34 | — | `60106` (2) | 126 | **Executor miss** on first tour (`.py` not invoked via `python3`). Redo run: exit 0, see [Phase 04 redo](#phase-04-efs-foothold-redo). |
 | 05 | Phase 5 | `read_flag.sh user` | 1s | 12 | 26 | — | `60106` (3) | 1 | First tour used Joe WinRM (401). Fixed helper reads flag as Administrator. |
 | 06 | Phase 6 | `audit_aie.py` | 0s | 10 | 14 | — | `60106` (2) | 126 | Same `python3` executor miss as phase 04. |
-| 06a | Phase 6a | `run-winpeas.sh` | 45s | **72** | **161** | — | `92032` (13) | 0 | **Enumeration burst**: Sysmon EID 1 storm; no custom AIE rule. Tool stdout confirms HKLM AIE. |
-| 06b | Phase 6b | `run-sharpup.sh` | 17s | **97** | **129** | — | `23505` (22) | 0 | Faster than winPEAS; PowerShell/script-block noise (`23505`). SharpUp stdout: `HKLM: 1` for Always Install Elevated. |
+| 06a | Phase 6a | `run-joe-tool.sh winpeas` | 45s | **72** | **161** | — | `92032` (13) | 0 | **Enumeration burst**: Sysmon EID 1 storm; no custom AIE rule. Tool stdout confirms HKLM AIE. |
+| 06b | Phase 6b | `run-joe-tool.sh sharpup` | 17s | **97** | **129** | — | `23505` (22) | 0 | Faster than winPEAS; PowerShell/script-block noise (`23505`). SharpUp stdout: `HKLM: 1` for Always Install Elevated. |
 | 07 | Phase 7 | `validate-cysvuln-aie-joe.sh` | 63s | **164** | **380** | **`100510`, `100512`** | `67028` (25) | 0 | **Only phase that fires SecretCon privesc rules.** AIE elevation receipt captured. |
 | 08 | Phase 8 | `read_flag.sh root` | 2s | 16 | 22 | — | `60106` (3) | 0 | Post-privesc admin read; no flag token in SIEM (file content not logged). |
 

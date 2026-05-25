@@ -25,10 +25,10 @@ nix develop
 ./scripts/run-local-cysvuln.sh
 ./scripts/cysvuln-local-prep.sh 127.0.0.1     # if first boot
 ./scripts/fetch-cysvuln-artifacts.sh          # warns if SharpUp.exe absent
-./scripts/run-sharpup.sh 127.0.0.1
+./scripts/run-joe-tool.sh sharpup 127.0.0.1
 ```
 
-Env knobs (mirrors [scripts/run-winpeas.sh](../../scripts/run-winpeas.sh)):
+Env knobs (mirrors the `winpeas` flow in [scripts/run-joe-tool.sh](../../scripts/run-joe-tool.sh)):
 
 | Env | Default | Purpose |
 |---|---|---|
@@ -81,7 +81,7 @@ Code lives in
 [scripts/validate/joe_task_runner.py](../../scripts/validate/joe_task_runner.py);
 the SharpUp-specific bits (binary path, task name, default args) are a
 ~25-line `ToolSpec` in
-[scripts/validate/run_sharpup_as_joe.py](../../scripts/validate/run_sharpup_as_joe.py).
+[scripts/validate/run_joe_tool.py](../../scripts/validate/run_joe_tool.py).
 
 ## Headline findings
 
@@ -168,7 +168,7 @@ Registry AutoLogon Found
 - This run used `audit` with no further arguments (all checks). To run a
   single check (matches the original walkthrough stub):
   ```bash
-  SHARPUP_ARGS='audit AlwaysInstallElevated' ./scripts/run-sharpup.sh 127.0.0.1
+  SHARPUP_ARGS='audit AlwaysInstallElevated' ./scripts/run-joe-tool.sh sharpup 127.0.0.1
   ```
 
 ## Cross-references

@@ -20,7 +20,7 @@ actually exercised in tree before this writeup. Companion to
 | Target | local QEMU CysVuln build (`127.0.0.1:15985` WinRM, `127.0.0.1:13389` RDP) |
 | Trigger identity | `WIN-UB5Q52138VG\User_Joe` (PsExec `-i 2` into existing RDP session) |
 | Transport | Administrator WinRM (stage MSI) -> PsExec `-i` (interactive Joe) -> `msiexec /quiet /norestart /i ... /l*v ...` |
-| Wrapper | [scripts/run-msfvenom-aie.sh](../../scripts/run-msfvenom-aie.sh) |
+| Wrapper | [scripts/run-joe-tool.sh msfvenom-aie](../../scripts/run-joe-tool.sh) |
 | Raw log | `artifacts/cysvuln/msfvenom-aie-<timestamp>.log` (gitignored) |
 
 ## Reproduce
@@ -29,10 +29,10 @@ actually exercised in tree before this writeup. Companion to
 nix develop .#kali                            # metasploit + pywinrm
 ./scripts/run-local-cysvuln.sh                # boot the VM (separate term)
 ./scripts/cysvuln-local-prep.sh 127.0.0.1     # first boot only
-./scripts/run-msfvenom-aie.sh 127.0.0.1
+./scripts/run-joe-tool.sh msfvenom-aie 127.0.0.1
 ```
 
-Env knobs (mirror [run-sharpup.sh](../../scripts/run-sharpup.sh) where it
+Env knobs (mirror the `sharpup` flow in [run-joe-tool.sh](../../scripts/run-joe-tool.sh) where it
 makes sense):
 
 | Env | Default | Purpose |
@@ -81,7 +81,7 @@ the trigger context is **different**:
 
 | Step | Mechanism | Why |
 |---|---|---|
-| Stage MSI on victim | Administrator WinRM + temp HTTP server on the host (OS-picked free port) | Avoids the WinRM `MaxEnvelopeSize` 413 limit on base64 uploads; same pattern as [run-sharpup.sh](../../scripts/run-sharpup.sh). |
+| Stage MSI on victim | Administrator WinRM + temp HTTP server on the host (OS-picked free port) | Avoids the WinRM `MaxEnvelopeSize` 413 limit on base64 uploads; reuses [joe_task_runner.upload_binary_via_http](../../scripts/validate/joe_task_runner.py). |
 | Trigger msiexec | PsExec `-i <sid>` into an existing RDP session for `User_Joe` | `msiexec` returns **1601** (installer service access denied) for non-interactive logon types — see Phase 7 callout at [walkthrough.md](walkthrough.md). Task Scheduler is therefore a dead-end here, even though it works fine for enumerator binaries like winPEAS / SharpUp. |
 | Poll for evidence | Administrator WinRM read of `aie-msfvenom-flag.txt` + cross-check vs `root.txt` | Cheap, reuses [run_aie_as_joe_interactive.py](../../scripts/validate/run_aie_as_joe_interactive.py)'s `poll_flag` (now parameterised over the flag/log paths). |
 
@@ -225,5 +225,5 @@ got reverted in one of the hives).
 - [scripts/validate/check_aie_response.py](../../scripts/validate/check_aie_response.py) — wixl-based MSI builder used by the chain validator
 - [scripts/validate/templates/aie-trigger.wxs.j2](../../scripts/validate/templates/aie-trigger.wxs.j2) — the wixl probe template for side-by-side comparison
 - [scripts/validate/run_aie_as_joe_interactive.py](../../scripts/validate/run_aie_as_joe_interactive.py) — PsExec/RDP interactive trigger (`--msi-path` / `--flag-path` / `--log-path` make it tool-agnostic)
-- [scripts/run-msfvenom-aie.sh](../../scripts/run-msfvenom-aie.sh) — wrapper for this writeup
+- [scripts/run-joe-tool.sh](../../scripts/run-joe-tool.sh) `msfvenom-aie` — dispatcher entry for this writeup
 - [kali.nix](../../kali.nix) — provides `metasploit` in `nix develop .#kali`

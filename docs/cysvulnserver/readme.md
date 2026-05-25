@@ -88,7 +88,7 @@ Log: `artifacts/cysvuln/validation-aie-joe.log`
 ### Manual enumeration — winPEAS as User_Joe
 
 ```bash
-./scripts/run-winpeas.sh 127.0.0.1
+./scripts/run-joe-tool.sh winpeas 127.0.0.1
 ```
 
 Captures `winPEASx64.exe` output (run as `User_Joe` via a one-shot
@@ -101,7 +101,7 @@ the headline AlwaysInstallElevated / UAC indicators are written up in
 
 ```bash
 ./scripts/fetch-cysvuln-artifacts.sh   # warns if SharpUp.exe absent
-./scripts/run-sharpup.sh 127.0.0.1
+./scripts/run-joe-tool.sh sharpup 127.0.0.1
 ```
 
 GhostPack's focused C# privesc auditor. Same execution harness as the
@@ -115,7 +115,7 @@ paths).
 
 ```bash
 nix develop .#kali
-./scripts/run-msfvenom-aie.sh 127.0.0.1
+./scripts/run-joe-tool.sh msfvenom-aie 127.0.0.1
 ```
 
 Builds an `windows/exec` MSI with stock msfvenom, stages it on the

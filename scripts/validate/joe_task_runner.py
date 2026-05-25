@@ -144,11 +144,36 @@ def fetch_binary(
     return observed
 
 
-def winrm_admin(target: str, port: int, password: str) -> winrm.Session:
+def winrm_session(
+    target: str,
+    port: int,
+    user: str,
+    password: str,
+    *,
+    operation_timeout_sec: int = 300,
+    read_timeout_sec: int = 310,
+    transport: str = "ntlm",
+) -> winrm.Session:
+    """Parameterized WinRM session factory shared with the interactive AIE
+    runner. Defaults to NTLM transport (the only one available on the
+    CysVuln Server 2016 baseline)."""
     return winrm.Session(
         f"http://{target}:{port}/wsman",
-        auth=("Administrator", password),
-        transport="ntlm",
+        auth=(user, password),
+        transport=transport,
+        operation_timeout_sec=operation_timeout_sec,
+        read_timeout_sec=read_timeout_sec,
+    )
+
+
+def winrm_admin(target: str, port: int, password: str) -> winrm.Session:
+    """Administrator-scoped WinRM session with extended timeouts suitable
+    for the scheduled-task harness (tasks can run for minutes)."""
+    return winrm_session(
+        target,
+        port,
+        "Administrator",
+        password,
         operation_timeout_sec=600,
         read_timeout_sec=620,
     )
@@ -161,6 +186,13 @@ def run_ps(session: winrm.Session, script: str) -> tuple[int, str, str]:
         r.std_out.decode(errors="replace"),
         r.std_err.decode(errors="replace"),
     )
+
+
+def quote_ps_single(value: str) -> str:
+    """Escape `value` for a PowerShell single-quoted literal. PowerShell
+    single quotes are literal except for an embedded single quote, which
+    is escaped by doubling it."""
+    return value.replace("'", "''")
 
 
 def remote_sha256(session: winrm.Session, path: str) -> str | None:
