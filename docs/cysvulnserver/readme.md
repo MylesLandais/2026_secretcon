@@ -15,9 +15,19 @@ Windows Server 2016 privilege-escalation challenge for the SecretCon range.
 1. **Foothold** — Unauthenticated EDB-42256 against Easy File Sharing Web Server 6.9 on HTTP/80. Service runs as `User_Joe`.
 2. **Privesc** — `AlwaysInstallElevated` (HKLM + HKCU) plus UAC bypass keys allow silent `msiexec` elevation to SYSTEM.
 
-Player walkthrough: [walkthrough.md](walkthrough.md)
+## Challenge components
 
-Deploy runbooks: [deploy-cysvuln-multi-hypervisor.md](../runbooks/deploy-cysvuln-multi-hypervisor.md), [deploy-cysvulnserver.md](../runbooks/deploy-cysvulnserver.md)
+Every SecretCon box ships four pieces. CysVuln's are:
+
+| Component | Document |
+|---|---|
+| Attack walkthrough (red FAQ) | [walkthrough.md](walkthrough.md) |
+| Defender walkthrough (blue FAQ) | [blue-faq-walkthrough.md](blue-faq-walkthrough.md) |
+| Tool knowledge | [winpeas.md](winpeas.md), [sharpup.md](sharpup.md), [msfvenom.md](msfvenom.md) |
+| Infrastructure deployment | this file + [`infrastructure/wazuh-docker/readme.md`](../../infrastructure/wazuh-docker/readme.md) |
+| AI agent skill (bonus) | [`.claude/skills/wazuh/SKILL.md`](../../.claude/skills/wazuh/SKILL.md) |
+
+Deploy runbooks: [deploy-cysvuln-multi-hypervisor.md](../runbooks/deploy-cysvuln-multi-hypervisor.md), [deploy-cysvulnserver.md](../runbooks/deploy-cysvulnserver.md).
 
 ## Prerequisites (attacker host)
 

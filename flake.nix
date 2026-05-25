@@ -2,8 +2,6 @@
 #
 #   nix develop             — default toolchain (packer, qemu, validation Python)
 #   nix develop .#kali      — adds nmap/msfvenom/evil-winrm/exploitdb (see kali.nix)
-#   nix develop .#forensics — adds libguestfs, hivex, chntpw, p7zip, ntfs3g
-#                             for offline VMDK + Windows registry analysis
 #   nix build .#win10-ews-local   — QEMU Win10 EWS qcow2
 #   nix build .#cysvuln-local     — QEMU CysVuln qcow2 (needs staged Server 2016 ISO)
 #   nix build .#win10-ews-proxmox — Proxmox EWS (live PROXMOX_* creds)
@@ -66,30 +64,6 @@
 
           shellHook = ''
             echo "[secretcon] dev shell active (kali-parity)"
-            if [ ! -f .env ] || [ ! -s .env ]; then
-              echo "[warn] .env missing or empty — secrets not loaded"
-            fi
-          '';
-        };
-
-        # Offline VM-image forensics: read-only NTFS mounts, Windows registry
-        # parsing, OVA/zip handling. Kept separate from the default shell to
-        # avoid pulling libguestfs appliance kernels into every contributor's
-        # environment.
-        devShells.forensics = pkgs.mkShell {
-          buildInputs = defaultShellInputs ++ (with pkgs; [
-            libguestfs-with-appliance
-            hivex
-            chntpw
-            p7zip
-            ntfs3g
-            file
-          ]);
-
-          shellHook = ''
-            echo "[secretcon] dev shell active (forensics)"
-            echo "         guestmount/virt-* + hivex + chntpw available"
-            export LIBGUESTFS_BACKEND=direct
             if [ ! -f .env ] || [ ! -s .env ]; then
               echo "[warn] .env missing or empty — secrets not loaded"
             fi
