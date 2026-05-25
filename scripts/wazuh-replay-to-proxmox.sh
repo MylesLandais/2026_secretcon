@@ -43,6 +43,10 @@ set -euo pipefail
 #   --limit N            send at most N events
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/wazuh-common.sh
+. "${REPO_ROOT}/scripts/lib/wazuh-common.sh"
+wazuh_load_env "$REPO_ROOT"
+
 DATASET=""
 TARGET=""
 SOURCE=""
@@ -89,14 +93,7 @@ if [ -z "$HOST" ] || [ -z "$PORT" ] || [ "$HOST" = "$TARGET" ]; then
     exit 2
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-    echo "[!] jq required (try: nix develop)" >&2
-    exit 2
-fi
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "[!] python3 required" >&2
-    exit 2
-fi
+wazuh_require_cmd jq python3 || exit 2
 
 # Pick source file
 if [ -z "$SOURCE" ]; then
@@ -141,9 +138,10 @@ fi
 
 # Build the jq projection: pre-filter by --since/--until and --filter,
 # then emit the original event JSON verbatim (compact, one per line).
-# Python reads each line, parses the .timestamp for the syslog header,
-# and forwards the original JSON text as the message body so the
-# receiving manager's json_log decoder sees an untouched event.
+# Python (scripts/lib/wazuh_replay.py) reads each line, parses the
+# .timestamp for the syslog header, and forwards the original JSON text
+# as the message body so the receiving manager's json_log decoder sees
+# an untouched event.
 JQ_PROG='select(.timestamp // null | tostring as $ts |
             ($since == "" or $ts >= $since) and
             ($until == "" or $ts <= $until))
@@ -162,100 +160,15 @@ if [ "$PROTO" = "tcp" ]; then
     fi
 fi
 
-# Stream the events through python3 (which buffers a single socket and
-# applies rate limiting) - far simpler than netcat acrobatics.
+# Stream the events through scripts/lib/wazuh_replay.py, which buffers a
+# single socket and applies rate limiting - far simpler than netcat
+# acrobatics and easier to read as a standalone module.
 export REPLAY_HOST="$HOST" REPLAY_PORT="$PORT" REPLAY_PROTO="$PROTO" \
        REPLAY_RATE="$RATE" REPLAY_TAG="$TAG" REPLAY_SOURCE="$SOURCE" \
        REPLAY_HOSTNAME="$HOSTNAME_VAL" REPLAY_DRY_RUN="$DRY_RUN" \
        REPLAY_LIMIT="$LIMIT"
 
-REPLAY_PY=$(cat <<'PY'
-import os, sys, socket, time, json
-host = os.environ["REPLAY_HOST"]
-port = int(os.environ["REPLAY_PORT"])
-proto = os.environ["REPLAY_PROTO"]
-rate = max(1, int(os.environ["REPLAY_RATE"]))
-tag = os.environ["REPLAY_TAG"]
-src = os.environ["REPLAY_SOURCE"]
-hn = os.environ["REPLAY_HOSTNAME"]
-dry = os.environ["REPLAY_DRY_RUN"] == "1"
-limit = int(os.environ["REPLAY_LIMIT"])
-
-sock = None
-if not dry:
-    if proto == "tcp":
-        sock = socket.create_connection((host, port), timeout=10)
-    else:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-interval = 1.0 / rate
-sent = 0
-errors = 0
-shown = 0
-start = time.time()
-last_progress = start
-
-for raw in sys.stdin:
-    raw = raw.rstrip("\n")
-    if not raw:
-        continue
-    # raw is a single compact JSON object per line, as emitted by jq -c.
-    try:
-        evt = json.loads(raw)
-    except Exception:
-        errors += 1
-        continue
-    orig_ts = evt.get("timestamp", "1970-01-01T00:00:00Z")
-
-    sd = f"[SECRETCON-REPLAY run_id={tag} orig_ts={orig_ts} source={src}]"
-    msg = f"<134>1 {orig_ts} {hn} wazuh-replay - {tag} {sd} {raw}\n"
-
-    if dry and shown < 3:
-        sys.stdout.write(f"--- dry-run sample {shown+1} ---\n{msg}")
-        shown += 1
-        if shown == 3:
-            break
-        continue
-    if dry:
-        break
-
-    try:
-        if proto == "tcp":
-            sock.sendall(msg.encode("utf-8", errors="replace"))
-        else:
-            sock.sendto(msg.encode("utf-8", errors="replace"), (host, port))
-    except Exception as exc:
-        errors += 1
-        sys.stderr.write(f"[!] send error after {sent}: {exc}\n")
-        break
-
-    sent += 1
-    if limit > 0 and sent >= limit:
-        break
-
-    time.sleep(interval)
-    now = time.time()
-    if now - last_progress > 5:
-        sys.stderr.write(f"    sent {sent} (errors={errors}, "
-                         f"{sent/max(0.001, now-start):.1f} eps)\n")
-        last_progress = now
-
-if sock and not dry:
-    try:
-        sock.close()
-    except Exception:
-        pass
-
-if dry:
-    sys.stdout.flush()
-    sys.stderr.write(f"[+] dry-run: rendered {shown} sample(s), no socket opened\n")
-else:
-    sys.stderr.write(f"[+] replay done: sent={sent}, errors={errors}, "
-                     f"elapsed={time.time()-start:.1f}s\n")
-PY
-)
-
 jq -c --arg since "$SINCE" --arg until "$UNTIL" "$JQ_PROG" "$SRC_FILE" \
-    | python3 -c "$REPLAY_PY"
+    | python3 "${REPO_ROOT}/scripts/lib/wazuh_replay.py"
 
 echo "[+] replay finished (target=${HOST}:${PORT}/${PROTO})"

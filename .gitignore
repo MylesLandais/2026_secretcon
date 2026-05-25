@@ -96,6 +96,8 @@ docs/runbooks/forensics-ad-chain8.md
 scripts/forensics/
 scripts/ad-chain8/
 scripts/run-chain8-dc.sh
+scripts/run-chain8-lab.sh
+scripts/run-chain8-lab-down.sh
 infrastructure/sysmon/chain8-sysmon-delta.xml
 infrastructure/wazuh-docker/config/wazuh_cluster/shared/chain8*/
 

@@ -39,26 +39,32 @@ set -euo pipefail
 #   --out-dir DIR          override output dir (default: <run-id>/dataset/)
 #   --container NAME       manager container (default: wazuh.manager)
 #   --indexer-container N  indexer container (default: wazuh.indexer)
-#   --indexer-user U       indexer basic-auth user (default: admin)
-#   --indexer-pass P       indexer basic-auth password (default: SecretPassword,
-#                          override via WAZUH_INDEXER_PASS env)
-#   --api-user U           manager API user (default: wazuh-wui)
-#   --api-pass P           manager API password (default: MyS3cr37P450r.*-)
+#   --indexer-user U       indexer basic-auth user (default: $WAZUH_INDEXER_USER)
+#   --indexer-pass P       indexer basic-auth password (default: $WAZUH_INDEXER_PASSWORD,
+#                          override via .env or WAZUH_INDEXER_PASSWORD env)
+#   --api-user U           manager API user (default: $WAZUH_API_USER)
+#   --api-pass P           manager API password (default: $WAZUH_API_PASSWORD)
 #   --window-from-loop     trim alerts.json/archives.json to the union of
 #                          iter-*/summary.json time windows. Default: full file.
 #   --tarball              additionally write <out-dir>.tar.zst (requires zstd)
 #   --no-archives          skip archives/* even if present
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/wazuh-common.sh
+. "${REPO_ROOT}/scripts/lib/wazuh-common.sh"
+# shellcheck source=lib/wazuh-api.sh
+. "${REPO_ROOT}/scripts/lib/wazuh-api.sh"
+wazuh_load_env "$REPO_ROOT"
+
 RUN_ID=""
 OUT_DIR=""
 SOURCE_DIR=""
-CONTAINER="${WAZUH_MANAGER_CONTAINER:-wazuh.manager}"
-INDEXER_CONTAINER="${WAZUH_INDEXER_CONTAINER:-wazuh.indexer}"
-INDEXER_USER="${WAZUH_INDEXER_USER:-admin}"
-INDEXER_PASS="${WAZUH_INDEXER_PASS:-SecretPassword}"
-API_USER="${WAZUH_API_USER:-wazuh-wui}"
-API_PASS="${WAZUH_API_PASS:-MyS3cr37P450r.*-}"
+CONTAINER="${WAZUH_MANAGER_CONTAINER}"
+INDEXER_CONTAINER="${WAZUH_INDEXER_CONTAINER}"
+INDEXER_USER="${WAZUH_INDEXER_USER}"
+INDEXER_PASS="${WAZUH_INDEXER_PASSWORD}"
+API_USER="${WAZUH_API_USER}"
+API_PASS="${WAZUH_API_PASSWORD}"
 WINDOW_FROM_LOOP=0
 TARBALL=0
 NO_ARCHIVES=0
@@ -88,10 +94,7 @@ if [ -z "$RUN_ID" ]; then
     exit 2
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-    echo "[!] jq required (try: nix develop)" >&2
-    exit 2
-fi
+wazuh_require_cmd jq || exit 2
 
 if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
     echo "[!] container ${CONTAINER} is not running" >&2
@@ -173,7 +176,7 @@ if [ "$WINDOW_FROM_LOOP" -eq 1 ]; then
             [ -f "$f" ] && [ -s "$f" ] || continue
             tmp="${f}.win"
             jq -c --arg since "$WIN_START" --arg until "$WIN_END" \
-                'select(.timestamp >= $since and .timestamp <= $until)' \
+                "$(wazuh_window_jq)" \
                 "$f" > "$tmp" 2>/dev/null || true
             [ -s "$tmp" ] && mv "$tmp" "$f" || rm -f "$tmp"
         done
@@ -198,15 +201,14 @@ copy_file "/var/ossec/etc/shared/${AGENT_GROUP}/agent.conf" \
     "${OUT_DIR}/agent/agent.conf" \
     || echo "[i] shared/${AGENT_GROUP}/agent.conf not present"
 
-# manager API: token + agents list
-TOKEN=$(curl -sk --max-time 10 -u "${API_USER}:${API_PASS}" -X POST \
-    "https://127.0.0.1:55000/security/user/authenticate?raw=true" 2>/dev/null || true)
-if [ -n "$TOKEN" ] && [[ "$TOKEN" != *"error"* ]]; then
-    curl -sk --max-time 10 -H "Authorization: Bearer ${TOKEN}" \
-        "https://127.0.0.1:55000/agents" \
+# manager API: token + agents list (via wazuh-api.sh)
+if TOKEN=$(WAZUH_API_USER="$API_USER" WAZUH_API_PASSWORD="$API_PASS" \
+              wazuh_api_token 2>/dev/null); then
+    WAZUH_API_USER="$API_USER" WAZUH_API_PASSWORD="$API_PASS" \
+        wazuh_api_get "/agents" "$TOKEN" \
         | jq '.' > "${OUT_DIR}/agent/agents.json" 2>/dev/null || true
-    curl -sk --max-time 10 -H "Authorization: Bearer ${TOKEN}" \
-        "https://127.0.0.1:55000/agents/groups" \
+    WAZUH_API_USER="$API_USER" WAZUH_API_PASSWORD="$API_PASS" \
+        wazuh_api_get "/agents/groups" "$TOKEN" \
         | jq '.' > "${OUT_DIR}/agent/groups.json" 2>/dev/null || true
 else
     echo "[i] manager API not reachable; skipping agents.json"

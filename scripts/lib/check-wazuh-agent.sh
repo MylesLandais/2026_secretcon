@@ -7,8 +7,10 @@
 #   source scripts/lib/check-wazuh-agent.sh
 #   check_wazuh_agent <agent-ip>
 #
-# Inputs (env, all optional — helper no-ops with a SKIP result if creds absent):
-#   WAZUH_MANAGER_HOST  default 192.168.61.10
+# Inputs (env, all optional - helper no-ops with a SKIP result if creds absent):
+#   WAZUH_MANAGER_HOST  default 192.168.61.10  (overrides WAZUH_API_HOST for
+#                       backward compatibility with the production-lab verify
+#                       scripts that target the Proxmox manager, not 127.0.0.1)
 #   WAZUH_API_PORT      default 55000
 #   WAZUH_API_USER      default wazuh-wui
 #   WAZUH_API_PASSWORD  required to perform the check
@@ -18,12 +20,8 @@
 
 check_wazuh_agent() {
     local agent_ip="$1"
-    local manager="${WAZUH_MANAGER_HOST:-192.168.61.10}"
-    local port="${WAZUH_API_PORT:-55000}"
-    local user="${WAZUH_API_USER:-wazuh-wui}"
-    local pass="${WAZUH_API_PASSWORD:-}"
 
-    if [ -z "$pass" ]; then
+    if [ -z "${WAZUH_API_PASSWORD:-}" ]; then
         check "wazuh-agent-active" PASS "skipped (WAZUH_API_PASSWORD unset)"
         return 0
     fi
@@ -32,23 +30,27 @@ check_wazuh_agent() {
         return 1
     fi
 
-    local token
-    token=$(curl -sk -u "${user}:${pass}" -X POST \
-        "https://${manager}:${port}/security/user/authenticate?raw=true" \
-        --max-time 10)
-    if [ -z "$token" ] || [[ "$token" == *"error"* ]]; then
-        check "wazuh-agent-active" FAIL "manager auth failed against ${manager}:${port}"
+    # Production-lab verify scripts default to the Proxmox manager; honor
+    # WAZUH_MANAGER_HOST when set, otherwise fall back to wazuh-api.sh's
+    # WAZUH_API_HOST (which defaults to 127.0.0.1 for the docker stack).
+    local manager_host="${WAZUH_MANAGER_HOST:-${WAZUH_API_HOST:-192.168.61.10}}"
+
+    # Source wazuh-api.sh so the lib's token + agent helpers are
+    # available. REPO_ROOT lookup is isolated to this scope so callers of
+    # the sourced verify-* scripts do not need to set it themselves.
+    local _here _repo_root
+    _here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    _repo_root="$(cd "${_here}/../.." && pwd)"
+    # shellcheck disable=SC1091
+    . "${_repo_root}/scripts/lib/wazuh-api.sh"
+
+    local pair agent_name status
+    if ! pair=$(WAZUH_API_HOST="$manager_host" wazuh_agent_lookup_by_ip "$agent_ip"); then
+        check "wazuh-agent-active" FAIL "manager auth failed against ${manager_host}:${WAZUH_API_PORT:-55000}"
         return 1
     fi
-
-    local agent_json
-    agent_json=$(curl -sk -H "Authorization: Bearer ${token}" \
-        "https://${manager}:${port}/agents?ip=${agent_ip}" \
-        --max-time 10)
-    local status
-    status=$(echo "$agent_json" | jq -r '.data.affected_items[0].status // "missing"')
-    local agent_name
-    agent_name=$(echo "$agent_json" | jq -r '.data.affected_items[0].name // "?"')
+    agent_name="${pair%%	*}"
+    status="${pair#*	}"
 
     if [ "$status" = "active" ]; then
         check "wazuh-agent-active" PASS "manager sees ${agent_name} (${agent_ip}) as active"

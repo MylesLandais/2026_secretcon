@@ -17,13 +17,18 @@ set -euo pipefail
 #   --until TS         ISO-8601 upper bound (required)
 #   --out-dir DIR      where to write iter-N/{alerts,archives,msiexec-timeline}.json
 #   --include-archives also dump raw archives.json (default: alerts only)
-#   --container NAME   manager container name (default: wazuh.manager)
+#   --container NAME   manager container name (default: $WAZUH_MANAGER_CONTAINER)
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/wazuh-common.sh
+. "${REPO_ROOT}/scripts/lib/wazuh-common.sh"
+wazuh_load_env "$REPO_ROOT"
 
 SINCE=""
 UNTIL=""
 OUT_DIR=""
 INCLUDE_ARCHIVES=0
-CONTAINER="${WAZUH_MANAGER_CONTAINER:-wazuh.manager}"
+CONTAINER="${WAZUH_MANAGER_CONTAINER}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -42,24 +47,21 @@ if [ -z "$SINCE" ] || [ -z "$UNTIL" ] || [ -z "$OUT_DIR" ]; then
     exit 2
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-    echo "[!] jq required (try: nix develop)" >&2
-    exit 2
-fi
+wazuh_require_cmd jq || exit 2
 
 mkdir -p "$OUT_DIR"
 
 ALERTS_OUT="${OUT_DIR}/alerts.json"
 ARCHIVES_OUT="${OUT_DIR}/archives.json"
 TIMELINE_OUT="${OUT_DIR}/msiexec-timeline.json"
+WIN_FILTER="$(wazuh_window_jq)"
 
 echo "[*] Draining alerts from ${CONTAINER} between ${SINCE} and ${UNTIL}"
 
 # alerts.json (rule hits). Each line is one JSON event with a .timestamp
-# field. We trust string compare on ISO-8601 timestamps.
+# field. String compare on ISO-8601 timestamps is sufficient.
 docker exec "${CONTAINER}" cat /var/ossec/logs/alerts/alerts.json 2>/dev/null \
-    | jq -c --arg since "$SINCE" --arg until "$UNTIL" \
-        'select(.timestamp >= $since and .timestamp <= $until)' \
+    | jq -c --arg since "$SINCE" --arg until "$UNTIL" "$WIN_FILTER" \
     > "$ALERTS_OUT" || true
 
 ALERT_COUNT=$(wc -l < "$ALERTS_OUT" | tr -d ' ')
@@ -67,8 +69,7 @@ echo "[+] Wrote ${ALERT_COUNT} alerts -> ${ALERTS_OUT}"
 
 if [ "$INCLUDE_ARCHIVES" -eq 1 ]; then
     docker exec "${CONTAINER}" cat /var/ossec/logs/archives/archives.json 2>/dev/null \
-        | jq -c --arg since "$SINCE" --arg until "$UNTIL" \
-            'select(.timestamp >= $since and .timestamp <= $until)' \
+        | jq -c --arg since "$SINCE" --arg until "$UNTIL" "$WIN_FILTER" \
         > "$ARCHIVES_OUT" || true
     ARCHIVE_COUNT=$(wc -l < "$ARCHIVES_OUT" | tr -d ' ')
     echo "[+] Wrote ${ARCHIVE_COUNT} archive events -> ${ARCHIVES_OUT}"
