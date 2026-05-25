@@ -102,6 +102,59 @@ Result: `output/cysvuln-vmware/cysvuln.vmx` + `cysvuln.vmdk`. Open the `.vmx` di
 
 ESXi remote builds: pass `-var "vmware_host=esxi.lab"` plus the additional `remote_*` variables documented in the [vmware-iso plugin reference](https://developer.hashicorp.com/packer/integrations/hashicorp/vmware/latest/components/builder/iso). Not wired by default.
 
+## Per-hypervisor IP discovery
+
+The validation chain (`scripts/verify-cysvuln.sh`, `scripts/validate-cysvuln-chain.sh`) takes a `<target-ip>` argument. How you obtain that IP depends on the hypervisor:
+
+| Hypervisor | Discovery command | Default IP |
+|---|---|---|
+| QEMU local | host-forwarded loopback | `127.0.0.1` (WinRM `:15985`, EFS `:18080`, RDP `:13389`) |
+| Proxmox | static IP applied by `setup-openssh.ps1` | `192.168.61.51` |
+| Hyper-V | `Get-VMNetworkAdapter -VMName CysVulnServer \| Select -ExpandProperty IPAddresses` | DHCP via `Default Switch` (typically `172.x.x.x/28`) |
+| VMware | `vmrun -gu packer -gp packer getGuestIPAddress output/cysvuln-vmware/cysvuln.vmx -wait` | DHCP via `vmnet8` (typically `192.168.<x>.0/24`) |
+
+VMware's `getGuestIPAddress` needs VMware Tools or `open-vm-tools` inside the guest (not installed by default). Without Tools, ARP-scan the vmnet8 subnet (`arp -a` on the host) or set a DHCP reservation on the vmnet8 NAT.
+
+## Wazuh-manager network override
+
+The default `cysvuln_wazuh_manager` is the lab Proxmox-side address `192.168.61.10`. On any other build host the agent will not be able to enroll, and the bootstrap relies on `WAZUH_ENROLLMENT_OPTIONAL=1` to keep going (set by every recipe except the Proxmox one). To get a *fully-enrolled* agent dialing a host-local docker SIEM (`infrastructure/wazuh-docker/`), override the variable at build time:
+
+| Hypervisor | Reachable manager IP from inside the guest | Build flag |
+|---|---|---|
+| QEMU SLIRP | host gateway `10.0.2.2` | `-var cysvuln_wazuh_manager=10.0.2.2` |
+| Proxmox `vmbr1` | static lab IP `192.168.61.10` | `-var cysvuln_wazuh_manager=192.168.61.10` (default) |
+| Hyper-V `Default Switch` | NAT gateway typically `172.x.x.1` (varies per host) | `-var cysvuln_wazuh_manager=172.x.x.1` |
+| VMware vmnet8 | NAT gateway typically `192.168.<vmnet8>.2` | `-var cysvuln_wazuh_manager=192.168.<x>.2` |
+
+Discover the Hyper-V Default-Switch gateway with `Get-NetIPAddress -InterfaceAlias 'vEthernet (Default Switch)' -AddressFamily IPv4`. Discover the VMware vmnet8 gateway with `ipconfig` on Windows (`VMware Network Adapter VMnet8`) or by reading `/Library/Preferences/VMware Fusion/networking` on macOS.
+
+Docker Desktop on Windows publishes `0.0.0.0:1514`/`:1515`/`:55000` by default, so the agent in the guest can reach the manager without extra port-proxy as long as the discovered gateway is the Windows host. If Docker Desktop is configured to bind loopback only, enable "Expose daemon on tcp://localhost:2375 without TLS" or add explicit `0.0.0.0` bindings to [`infrastructure/wazuh-docker/docker-compose.yml`](../../infrastructure/wazuh-docker/docker-compose.yml).
+
+## Snapshot lifecycle and observability scope
+
+Each hypervisor has its own snapshot API; the in-tree observability loops only orchestrate one of them.
+
+| Hypervisor | Snapshot create | Revert | List | Used by `scripts/observability/*` |
+|---|---|---|---|---|
+| QEMU | `qemu-img snapshot -c baseline cysvuln.qcow2` | `qemu-img snapshot -a baseline cysvuln.qcow2` | `qemu-img snapshot -l cysvuln.qcow2` | **yes** |
+| Hyper-V | `Checkpoint-VM -Name CysVulnServer -SnapshotName baseline` | `Restore-VMSnapshot -VMName CysVulnServer -Name baseline -Confirm:$false` | `Get-VMSnapshot -VMName CysVulnServer` | no |
+| VMware | `vmrun snapshot output/cysvuln-vmware/cysvuln.vmx baseline` | `vmrun revertToSnapshot output/cysvuln-vmware/cysvuln.vmx baseline` | `vmrun listSnapshots output/cysvuln-vmware/cysvuln.vmx` | no |
+
+[`scripts/observability-loop.sh`](../../scripts/observability-loop.sh), [`scripts/observability/run-baseline-tour.sh`](../../scripts/observability/run-baseline-tour.sh), and [`scripts/observability/stress-campaign.sh`](../../scripts/observability/stress-campaign.sh) drive the QEMU `qemu-img snapshot` lifecycle plus `pkill qemu-system-x86_64` for stop/start. They do not have Hyper-V or VMware backends.
+
+Hyper-V and VMware operators get full coverage of the build and validation paths but run the SIEM capture manually:
+
+```
+# After booting and discovering the guest IP per above
+./scripts/check-cysvuln-tooling.sh --default
+./scripts/verify-cysvuln.sh <guest-ip>
+./scripts/validate-cysvuln-chain.sh <guest-ip>
+```
+
+The exported `dataset.tar.zst` from a QEMU loop is hypervisor-agnostic; replay onto any Wazuh manager via [`scripts/wazuh-replay-to-proxmox.sh`](../../scripts/wazuh-replay-to-proxmox.sh) to exercise the rule pack against a Hyper-V or VMware-hosted manager. See [`docs/cysvulnserver/blue-faq-walkthrough.md`](../cysvulnserver/blue-faq-walkthrough.md) for the analyst story and [`docs/runbooks/wazuh-dataset-export-and-replay.md`](wazuh-dataset-export-and-replay.md) for the replay procedure.
+
+A future hypervisor adapter for `scripts/lib/loop_lib.sh` (`vm_take_snapshot`, `vm_revert_snapshot`, `vm_stop` with QEMU / Hyper-V / VMware backends) would close this gap; it is tracked as future work and not in scope for the current docs.
+
 ## Smoke validation
 
 After any build, boot the artifact and run from your attacker box:

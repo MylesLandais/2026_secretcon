@@ -70,16 +70,16 @@ Required inputs: Server 2016 ISO, CysVuln artifacts (fetch script), optional fla
 ./scripts/fetch-cysvuln-artifacts.sh
 ```
 
-Build path (pick one):
+Build path (pick one — all four covered by [docs/runbooks/deploy-cysvuln-multi-hypervisor.md](docs/runbooks/deploy-cysvuln-multi-hypervisor.md)):
 
-| Platform | Command / doc |
-|----------|----------------|
-| QEMU (Nix) | `nix build .#cysvuln-local` then `scripts/run-local-cysvuln.sh` |
-| Proxmox | [docs/runbooks/deploy-cysvulnserver.md](docs/runbooks/deploy-cysvulnserver.md) |
-| VMware | [docs/runbooks/deploy-cysvuln-multi-hypervisor.md](docs/runbooks/deploy-cysvuln-multi-hypervisor.md) |
-| Hyper-V | `scripts/build-provision-iso.ps1` then Packer in `infrastructure/packer/cysvuln/` |
+| Platform | Command | Skill |
+|----------|---------|-------|
+| QEMU (Nix) | `nix build .#cysvuln-local` then `scripts/run-local-cysvuln.sh` | [`.claude/skills/nix/SKILL.md`](.claude/skills/nix/SKILL.md) |
+| Proxmox | see [docs/runbooks/deploy-cysvulnserver.md](docs/runbooks/deploy-cysvulnserver.md) | [`.claude/skills/proxmox/SKILL.md`](.claude/skills/proxmox/SKILL.md) |
+| Hyper-V | `scripts/build-provision-iso.ps1` then `packer build -only=hyperv-iso.cysvuln-hyperv .` | [`.claude/skills/hyperv/SKILL.md`](.claude/skills/hyperv/SKILL.md) |
+| VMware Workstation/Fusion | `packer build -only=vmware-iso.cysvuln-vmware .` | [`.claude/skills/vmware/SKILL.md`](.claude/skills/vmware/SKILL.md) |
 
-Validate after boot: `./scripts/verify-cysvuln.sh <target-ip>`
+Validate after boot: `./scripts/verify-cysvuln.sh <target-ip>`. The SIEM capture loops (`scripts/observability-loop.sh`, `scripts/observability/*`) are QEMU-only; on other hypervisors run the validation chain manually — see the runbook's "Snapshot lifecycle and observability scope" section.
 
 ### EWS challenge (Win10 LTSC)
 
@@ -89,9 +89,14 @@ nix build .#win10-ews-local
 ./scripts/run-local-vm.sh result/win10-ews-local.qcow2
 ```
 
-Proxmox-native: `cd infrastructure/packer/ews && packer build -only=proxmox-iso.win10-ews .` with
-`PROXMOX_URL`, `PROXMOX_USERNAME`, `PROXMOX_PASSWORD` from `.env`.
-See [docs/runbooks/deploy-windowsvm.md](docs/runbooks/deploy-windowsvm.md).
+Build path (pick one):
+
+| Platform | Command | Skill |
+|----------|---------|-------|
+| QEMU (Nix) | `nix build .#win10-ews-local` | [`.claude/skills/nix/SKILL.md`](.claude/skills/nix/SKILL.md) |
+| Proxmox | `cd infrastructure/packer/ews && packer build -only=proxmox-iso.win10-ews .` (needs `PROXMOX_URL/USERNAME/PASSWORD` in `.env`); see [docs/runbooks/deploy-windowsvm.md](docs/runbooks/deploy-windowsvm.md) | [`.claude/skills/proxmox/SKILL.md`](.claude/skills/proxmox/SKILL.md) |
+| Hyper-V | `scripts/hyperv/Build-SecretConEwsVhdx.ps1` (Windows PowerShell, runs Packer end-to-end) | [`.claude/skills/hyperv/SKILL.md`](.claude/skills/hyperv/SKILL.md) |
+| VMware Workstation/Fusion | `cd infrastructure/packer/ews && packer build -only=vmware-iso.win10-ews-vmware .` | [`.claude/skills/vmware/SKILL.md`](.claude/skills/vmware/SKILL.md) |
 
 ### Wazuh SIEM
 

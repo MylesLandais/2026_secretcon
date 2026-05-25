@@ -275,6 +275,23 @@ SIEM-stack defects, and were closed by:
   blocks until both WinRM and the Wazuh agent report healthy after a
   revert.
 
+### Hypervisor scope
+
+The capture loops orchestrate the QEMU `qemu-img snapshot` lifecycle
+only. Hyper-V `Checkpoint-VM` and VMware `vmrun snapshot` are not
+abstracted today, so `observability-loop.sh`, `run-baseline-tour.sh`,
+and `stress-campaign.sh` are QEMU-host-only. The rule pack itself
+(`100501`–`100530` in [`local_rules.xml`](../../infrastructure/wazuh-docker/config/wazuh_cluster/local_rules.xml))
+and the exported `dataset.tar.zst` are hypervisor-agnostic. A Hyper-V
+or VMware analyst can ingest a QEMU-captured dataset via
+[`scripts/wazuh-replay-to-proxmox.sh`](../../scripts/wazuh-replay-to-proxmox.sh)
+and re-fire every rule on their own manager — the scorecards land
+identically because Wazuh sees the same JSON either way. See
+[`docs/runbooks/deploy-cysvuln-multi-hypervisor.md`](../runbooks/deploy-cysvuln-multi-hypervisor.md)
+("Snapshot lifecycle and observability scope") for the per-hypervisor
+snapshot commands and the manual validation path that replaces the
+loop scripts on non-QEMU hosts.
+
 ### How to reproduce
 
 ```bash

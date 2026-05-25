@@ -15,6 +15,22 @@ Windows Server 2016 privilege-escalation challenge for the SecretCon range.
 1. **Foothold** — Unauthenticated EDB-42256 against Easy File Sharing Web Server 6.9 on HTTP/80. Service runs as `User_Joe`.
 2. **Privesc** — `AlwaysInstallElevated` (HKLM + HKCU) plus UAC bypass keys allow silent `msiexec` elevation to SYSTEM.
 
+## Hypervisor support
+
+The build and validation paths are hypervisor-portable; the SIEM capture loops are not. Plan accordingly.
+
+| Feature | QEMU (Nix) | Proxmox | Hyper-V | VMware Workstation/Fusion |
+|---|---|---|---|---|
+| Packer build | yes (`nix build .#cysvuln-local`) | yes (`proxmox-iso.win2016-cysvuln`) | yes (`hyperv-iso.cysvuln-hyperv`) | yes (`vmware-iso.cysvuln-vmware`) |
+| Boot / validate chain | yes (host forwards `127.0.0.1:15985`) | yes (lab `192.168.61.51`) | yes (DHCP via `Default Switch`) | yes (DHCP via `vmnet8`) |
+| Local Wazuh docker SIEM | yes (gw `10.0.2.2`) | yes (lab `vmbr1` `192.168.61.10`) | manual override (`172.x.x.1` or `host.docker.internal`) | manual override (`192.168.<vmnet8>.2`) |
+| `observability-loop.sh` / `stress-campaign.sh` | **yes** | no | no | no |
+| In-tree PowerShell build wrappers (`scripts/hyperv/`) | n/a | n/a | EWS only | none |
+
+Build and run commands per hypervisor live in [deploy-cysvuln-multi-hypervisor.md](../runbooks/deploy-cysvuln-multi-hypervisor.md). Skills: [`hyperv/SKILL.md`](../../.claude/skills/hyperv/SKILL.md), [`vmware/SKILL.md`](../../.claude/skills/vmware/SKILL.md), [`proxmox/SKILL.md`](../../.claude/skills/proxmox/SKILL.md).
+
+The observability and 10x stress campaign loops orchestrate `qemu-img snapshot` against `cysvuln.qcow2`; they have no Hyper-V `Checkpoint-VM` or VMware `vmrun snapshot` backend today. Hyper-V and VMware operators run the validation chain manually (`scripts/verify-cysvuln.sh`, `scripts/validate-cysvuln-chain.sh`) and skip the loop scripts; the exported `dataset.tar.zst` from a QEMU loop is hypervisor-agnostic and can be replayed onto any Wazuh manager via [`scripts/wazuh-replay-to-proxmox.sh`](../../scripts/wazuh-replay-to-proxmox.sh).
+
 ## Challenge components
 
 Every SecretCon box ships four pieces. CysVuln's are:

@@ -41,6 +41,38 @@ host       <- guest 10.0.2.2:1514 (Wazuh agent events; outbound from guest)
 No extra port forwards on the QEMU side are needed; the agent only
 opens outbound connections.
 
+### Manager-IP per hypervisor
+
+The agent inside a CysVuln guest dials whatever IP was baked into
+`ossec.conf` at Packer time via the `WAZUH_MANAGER` env variable
+(set from `-var cysvuln_wazuh_manager=<ip>` in the recipe). The
+right IP depends on how the guest sees the host running this docker
+stack:
+
+| Hypervisor | NAT gateway from inside the guest | `-var cysvuln_wazuh_manager=` |
+|---|---|---|
+| QEMU SLIRP (`run-local-cysvuln.sh`) | `10.0.2.2` | `10.0.2.2` (default) |
+| Proxmox `vmbr1` | `192.168.61.10` (the lab Wazuh VM, not docker) | `192.168.61.10` (default; the lab path bypasses this docker stack) |
+| Hyper-V `Default Switch` | typically `172.x.x.1` (varies per host) | `<that gateway>` |
+| VMware vmnet8 | typically `192.168.<x>.2` | `<that gateway>` |
+
+Discover the Hyper-V Default-Switch IP with
+`Get-NetIPAddress -InterfaceAlias 'vEthernet (Default Switch)' -AddressFamily IPv4`.
+Discover the VMware vmnet8 IP with `ipconfig`
+(look for `VMware Network Adapter VMnet8`) on Windows, or read
+`/Library/Preferences/VMware Fusion/networking` on macOS.
+
+Docker Desktop on Windows publishes container ports on `0.0.0.0` by
+default; the agent in the guest can reach `:1514`/`:1515`/`:55000`
+without extra port-proxy. If you disabled host-loopback exposure,
+either re-enable it in Docker Desktop settings ("Resources →
+Network") or add explicit `0.0.0.0:` prefixes to the `ports:` block
+in `docker-compose.yml`.
+
+Full per-hypervisor build commands plus the IP-discovery and
+snapshot-lifecycle tables live in
+[`docs/runbooks/deploy-cysvuln-multi-hypervisor.md`](../../docs/runbooks/deploy-cysvuln-multi-hypervisor.md).
+
 ## SecretCon overlays vs. upstream
 
 1. Dashboard exposed on host `:1443` instead of `:443` (host :443 may be

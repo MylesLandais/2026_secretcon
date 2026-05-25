@@ -30,6 +30,7 @@ Platform notes:
 - QEMU: `nix build .#win10-ews-local`
 - Proxmox: copy ISO to `local:iso/` on the node; `cd infrastructure/packer/ews && packer build -only=proxmox-iso.win10-ews .`
 - Hyper-V: see `scripts/hyperv/` and `infrastructure/packer/ews/win10-ews-hyperv.pkr.hcl`
+- VMware Workstation/Fusion: `cd infrastructure/packer/ews && packer build -only=vmware-iso.win10-ews-vmware -var iso_url=file:///path/to/<filename> .`; see [`.claude/skills/vmware/SKILL.md`](../.claude/skills/vmware/SKILL.md)
 
 ## server-2016 (CysVuln challenge)
 
@@ -53,8 +54,8 @@ Platform notes:
 
 - QEMU: `nix build .#cysvuln-local` (pass ISO via flake/packer vars)
 - Proxmox: stage as `local:iso/windows-server-2016.iso`; see `deploy-cysvulnserver.md`
-- VMware: `packer build` in `infrastructure/packer/cysvuln/` with `-var cysvuln_iso_url=file://...`
-- Hyper-V: build `provision.iso` via `scripts/build-provision-iso.ps1`, then packer with `-var cysvuln_provision_iso=...`
+- VMware Workstation/Fusion: `cd infrastructure/packer/cysvuln && packer build -only=vmware-iso.cysvuln-vmware -var cysvuln_iso_url=file://... .`; see [`.claude/skills/vmware/SKILL.md`](../.claude/skills/vmware/SKILL.md)
+- Hyper-V: build `provision.iso` via `scripts/build-provision-iso.ps1`, then `packer build -only=hyperv-iso.cysvuln-hyperv -var cysvuln_iso_url=... -var cysvuln_provision_iso=...`; see [`.claude/skills/hyperv/SKILL.md`](../.claude/skills/hyperv/SKILL.md)
 
 ## CysVuln non-ISO artifacts
 
