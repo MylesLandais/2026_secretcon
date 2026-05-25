@@ -239,8 +239,8 @@ The orchestrator writes one directory per run under
 per-iteration `alerts.json`, raw `archives.json`, a curated
 `msiexec-timeline.json` (the single artifact a downstream analyst LLM
 should read first), `summary.json`, and a chain stdout log. A top-level
-`summary.csv` and `raw-notes.md` seed the hand-authored report at
-[blue-team-report.md](blue-team-report.md).
+`summary.csv` and `raw-notes.md` seed the canonical defender FAQ at
+[blue-faq-walkthrough.md](blue-faq-walkthrough.md).
 
 Stack lives under [infrastructure/wazuh-docker/](../../infrastructure/wazuh-docker/);
 bring up / tear down with `./scripts/wazuh-docker-up.sh` /
@@ -274,7 +274,8 @@ looks like in isolation:
 ```
 
 Artifacts under `artifacts/cysvuln/observability-baseline/<run-id>/`.
-Hand-authored analysis: [baseline-observability.md](baseline-observability.md).
+Per-tool footprint analysis is folded into
+[blue-faq-walkthrough.md](blue-faq-walkthrough.md).
 
 ### 10x stress campaign (red + blue scorecards)
 
@@ -291,9 +292,9 @@ both CTF and SOC teams read the same dataset:
 ```
 
 Artifacts under `artifacts/cysvuln/stress-campaign/<run-id>/`. The latest
-campaign hit 10/10 on both flags and 10/10 on the four AIE-leg rules; see
-[stress-campaign-report.md](stress-campaign-report.md) and
-[ctf-issues-log.md](ctf-issues-log.md).
+campaign hit 10/10 on both flags and 10/10 on the four AIE-leg rules;
+the dual scorecards and reproducibility analysis live in
+[blue-faq-walkthrough.md](blue-faq-walkthrough.md).
 
 ## Artifacts
 
@@ -302,5 +303,5 @@ campaign hit 10/10 on both flags and 10/10 on the four AIE-leg rules; see
 - Validation: `scripts/validate/`, `scripts/verify-cysvuln.sh`
 - SIEM stack: `infrastructure/wazuh-docker/`
 - Observability loop: `scripts/observability-loop.sh`, `scripts/observability/`
-- Baseline tour: `scripts/observability/run-baseline-tour.sh`, [baseline-observability.md](baseline-observability.md)
-- Stress campaign: `scripts/observability/stress-campaign.sh`, [stress-campaign-report.md](stress-campaign-report.md), [ctf-issues-log.md](ctf-issues-log.md)
+- Baseline tour: `scripts/observability/run-baseline-tour.sh`, [blue-faq-walkthrough.md](blue-faq-walkthrough.md)
+- Stress campaign: `scripts/observability/stress-campaign.sh`, [blue-faq-walkthrough.md](blue-faq-walkthrough.md)

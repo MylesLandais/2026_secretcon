@@ -9,7 +9,7 @@ set -euo pipefail
 #     creations, msiexec children, etc.),
 #   * replayed into another Wazuh manager via
 #     scripts/wazuh-replay-to-proxmox.sh, or
-#   * archived alongside docs/cysvulnserver/blue-team-report.md as the
+#   * archived alongside docs/cysvulnserver/blue-faq-walkthrough.md as the
 #     evidence pack for a given run.
 #
 # What we copy out of the live wazuh.manager container:

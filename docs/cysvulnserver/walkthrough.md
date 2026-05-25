@@ -404,9 +404,9 @@ cysvuln-root-flag-placeholder
 | SharpUp (optional) | `./scripts/run-joe-tool.sh sharpup 127.0.0.1` | `=== Always Install Elevated ===  HKCU: 1  HKLM: 1` |
 | Privesc | `msiexec /quiet /i aie-probe.msi` | CustomActionSchedule in log |
 | msfvenom MSI (optional) | `nix develop .#kali; ./scripts/run-joe-tool.sh msfvenom-aie 127.0.0.1` | `aie-msfvenom-flag.txt == root.txt` |
-| SIEM capture (blue team) | `./scripts/observability-loop.sh` | `summary.csv` + `msiexec-timeline.json` per iter (see [blue-team-report.md](blue-team-report.md)) |
-| Baseline observability tour | `./scripts/observability/run-baseline-tour.sh` | Per-phase `matrix.md` + winPEAS/SharpUp/privesc SIEM slices (see [baseline-observability.md](baseline-observability.md)) |
-| **10x stress campaign (red + blue)** | `./scripts/observability/stress-campaign.sh --iterations 10` | `campaign-summary.csv` + per-iter `red-scorecard.json` / `blue-scorecard.json` (see [stress-campaign-report.md](stress-campaign-report.md), [ctf-issues-log.md](ctf-issues-log.md)) |
+| SIEM capture (blue team) | `./scripts/observability-loop.sh` | `summary.csv` + `msiexec-timeline.json` per iter (see [blue-faq-walkthrough.md](blue-faq-walkthrough.md)) |
+| Baseline observability tour | `./scripts/observability/run-baseline-tour.sh` | Per-phase `matrix.md` + winPEAS/SharpUp/privesc SIEM slices (see [blue-faq-walkthrough.md](blue-faq-walkthrough.md)) |
+| **10x stress campaign (red + blue)** | `./scripts/observability/stress-campaign.sh --iterations 10` | `campaign-summary.csv` + per-iter `red-scorecard.json` / `blue-scorecard.json` (see [blue-faq-walkthrough.md](blue-faq-walkthrough.md)) |
 | EFS app log (Phase 4) | Wazuh archives filter `EFS Software` / rule `60602` on `fswsService.exe` crash | After `Savelog=1` + agent.conf tail; see baseline Phase 04 redo |
 | Dataset export / Proxmox replay | `./scripts/wazuh-export-dataset.sh --run-id <id> --tarball` then `./scripts/wazuh-replay-to-proxmox.sh` | `dataset/MANIFEST.md`, `dataset.tar.zst` (see [runbooks/wazuh-dataset-export-and-replay.md](../runbooks/wazuh-dataset-export-and-replay.md)) |
 | Root flag | `type root.txt` | `flag{cysvuln-root-local-test}` |

@@ -304,7 +304,7 @@ production Proxmox manager (steps 3a-3d) is the better target.
 ## References
 
 - [`infrastructure/wazuh-docker/`](../../infrastructure/wazuh-docker/)
-- [`docs/cysvulnserver/blue-team-report.md`](../cysvulnserver/blue-team-report.md)
+- [`docs/cysvulnserver/blue-faq-walkthrough.md`](../cysvulnserver/blue-faq-walkthrough.md)
 - [`scripts/observability-loop.sh`](../../scripts/observability-loop.sh)
 - Wazuh syslog ingestion:
   <https://documentation.wazuh.com/current/user-manual/reference/ossec-conf/remote.html>
