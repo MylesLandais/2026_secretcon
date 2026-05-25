@@ -18,19 +18,21 @@ set -uo pipefail
 #   WINRM_PORT, ADMIN_PW, JOE_USER, JOE_PW, WAZUH_API_USER, WAZUH_API_PASSWORD
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../lib/loop_lib.sh
+. "${REPO_ROOT}/scripts/lib/loop_lib.sh"
+
 TARGET="127.0.0.1"
 RUN_ID=""
 SKIP_PHASES=""
-WINRM_PORT="${WINRM_PORT:-15985}"
-ADMIN_USER="${ADMIN_USER:-Administrator}"
-ADMIN_PW="${ADMIN_PW:-PizzaMan123!}"
+NOISE_S="${NOISE_S:-60}"
+DRAIN_TAIL_S="${DRAIN_TAIL_S:-15}"
+
+# Env exported for loop_lib.sh helpers + downstream scripts.
+export WINRM_PORT="${WINRM_PORT:-15985}"
+export ADMIN_USER="${ADMIN_USER:-Administrator}"
+export ADMIN_PW="${ADMIN_PW:-PizzaMan123!}"
 JOE_USER="${JOE_USER:-User_Joe}"
 JOE_PW="${JOE_PW:-VeryStrongPassword123!@#}"
-NOISE_S="${NOISE_S:-60}"
-WAIT_AGENT_S="${WAIT_AGENT_S:-180}"
-DRAIN_TAIL_S="${DRAIN_TAIL_S:-15}"
-MGR_USER="${WAZUH_API_USER:-wazuh-wui}"
-MGR_PASS="${WAZUH_API_PASSWORD:-MyS3cr37P450r.*-}"
 AGENT_IP="${AGENT_IP:-10.0.2.15}"
 
 while [ $# -gt 0 ]; do
@@ -42,6 +44,7 @@ while [ $# -gt 0 ]; do
         *) echo "[!] unknown flag: $1" >&2; exit 2 ;;
     esac
 done
+export TARGET
 
 if [ -z "$RUN_ID" ]; then
     RUN_ID="baseline-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -69,62 +72,23 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
-# Wait for WinRM
-echo "[*] waiting for WinRM at 127.0.0.1:${WINRM_PORT}"
-deadline=$(( $(date +%s) + 300 ))
-while [ "$(date +%s)" -lt "$deadline" ]; do
-    if timeout 5 bash -c "</dev/tcp/127.0.0.1/${WINRM_PORT}" 2>/dev/null; then
-        echo "    WinRM port open"
-        break
-    fi
-    sleep 5
-done
-
-# Wait for Wazuh agent active
-echo "[*] waiting for Wazuh agent (${AGENT_IP}) active"
-deadline=$(( $(date +%s) + WAIT_AGENT_S ))
-while [ "$(date +%s)" -lt "$deadline" ]; do
-    token=$(curl -sk --max-time 5 -u "${MGR_USER}:${MGR_PASS}" -X POST \
-        "https://127.0.0.1:55000/security/user/authenticate?raw=true" 2>/dev/null || true)
-    if [ -n "$token" ] && [[ "$token" != *"error"* ]]; then
-        status=$(curl -sk --max-time 5 -H "Authorization: Bearer ${token}" \
-            "https://127.0.0.1:55000/agents?ip=${AGENT_IP}" 2>/dev/null \
-            | jq -r '.data.affected_items[0].status // "missing"')
-        if [ "$status" = "active" ]; then
-            echo "    agent active"
-            break
-        fi
-    fi
-    sleep 5
-done
+# Gate on WinRM + Wazuh agent active before the first phase.
+echo "[*] gating on WinRM + Wazuh agent (ip=${AGENT_IP})"
+WAZUH_AGENT_IP="$AGENT_IP" \
+    "${REPO_ROOT}/scripts/lib/wait_for_winrm.sh" "$TARGET" 300 || true
 
 ###############################################################################
 # Helpers
 ###############################################################################
-
-# Emit a SECRETCON-PHASE-<id>-<BEGIN|END> sentinel via Administrator WinRM.
-# Shows up as Sysmon EID 1 with a unique commandLine so any dataset
-# consumer can slice unambiguously.
-marker() {
-    local kind="$1" id="$2"
-    python3 - "$TARGET" "$WINRM_PORT" "$ADMIN_USER" "$ADMIN_PW" "$kind" "$id" \
-        <<'PY' 2>/dev/null || true
-import sys, winrm
-target, port, user, pw, kind, pid = sys.argv[1:7]
-s = winrm.Session(f"http://{target}:{port}/wsman",
-                  auth=(user, pw), transport="ntlm")
-s.run_cmd("cmd", ["/c", f"echo SECRETCON-PHASE-{pid}-{kind}"])
-PY
-}
 
 skip_phase() {
     local id="$1"
     [ -n "$SKIP_PHASES" ] && [[ ",${SKIP_PHASES}," == *",${id},"* ]]
 }
 
-# Run one phase: bracket sentinels, run the command, drain Wazuh
-# between [start - 5s, end + DRAIN_TAIL_S]. Each phase writes to its
-# own directory under OUT_BASE/phase-<id>-<name>/.
+# Run one phase: bracket sentinels (via loop_winrm_marker), run the
+# command, drain Wazuh between [start - 5s, end + DRAIN_TAIL_S]. Each
+# phase writes to its own dir under OUT_BASE/phase-<id>-<name>/.
 phase() {
     local id="$1" name="$2"; shift 2
     local dir="${OUT_BASE}/phase-${id}-${name}"
@@ -138,7 +102,7 @@ phase() {
     mkdir -p "$dir"
     echo
     echo "----- phase ${id} (${name}) -----"
-    marker BEGIN "$id"
+    loop_winrm_marker BEGIN "$id"
     local start; start=$(date -u +%FT%TZ)
     local start_epoch; start_epoch=$(date +%s)
 
@@ -147,7 +111,7 @@ phase() {
 
     local end; end=$(date -u +%FT%TZ)
     local end_epoch; end_epoch=$(date +%s)
-    marker END "$id"
+    loop_winrm_marker END "$id"
 
     # Give Wazuh a few seconds to ingest the trailing events before draining.
     sleep "$DRAIN_TAIL_S"
@@ -270,7 +234,7 @@ phase 03 smoke env WINRM_PORT="$WINRM_PORT" "${REPO_ROOT}/scripts/verify-cysvuln
 phase 04 foothold python3 "${REPO_ROOT}/scripts/validate/check_efs69_response.py" \
     --target "$TARGET" --port 18080 --service-port 80 --mode exec --cmd whoami
 
-phase 05 user-flag "${REPO_ROOT}/scripts/lib/read_user_flag.sh" "$TARGET"
+phase 05 user-flag "${REPO_ROOT}/scripts/lib/read_flag.sh" user "$TARGET"
 
 phase 06 aie-audit python3 "${REPO_ROOT}/scripts/validate/audit_aie.py" \
     --target "$TARGET" --port "$WINRM_PORT" \
@@ -282,7 +246,7 @@ phase 06b sharpup "${REPO_ROOT}/scripts/run-sharpup.sh" "$TARGET"
 
 phase 07 privesc "${REPO_ROOT}/scripts/validate-cysvuln-aie-joe.sh" "$TARGET"
 
-phase 08 root-flag "${REPO_ROOT}/scripts/lib/read_root_flag.sh" "$TARGET"
+phase 08 root-flag "${REPO_ROOT}/scripts/lib/read_flag.sh" root "$TARGET"
 
 render_matrix "$OUT_BASE"
 

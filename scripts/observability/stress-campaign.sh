@@ -29,12 +29,14 @@ set -uo pipefail
 #   WAZUH_API_PASSWORD, WAZUH_MANAGER_GW, AGENT_IP, QCOW, SNAP_NAME
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../lib/loop_lib.sh
+. "${REPO_ROOT}/scripts/lib/loop_lib.sh"
 
 ITERATIONS=10
 RUN_ID=""
 SKIP_STACK=0
 SKIP_REBUILD=1                # default: reuse current image; campaigns should
-                              # be cheap to repeat. --skip-rebuild=0 to rebuild.
+                              # be cheap to repeat. --rebuild flips this.
 SKIP_BASELINE=1               # same logic: reuse existing baseline snapshot.
 SKIP_PHASES=""
 NOISE_S=30                    # short noise window keeps 10x wall clock down
@@ -64,18 +66,17 @@ mkdir -p "$OUT_BASE"
 LOG="${OUT_BASE}/campaign.log"
 exec > >(tee -a "$LOG") 2>&1
 
-QCOW="${QCOW:-${REPO_ROOT}/artifacts/cysvuln/local-qemu/cysvuln.qcow2}"
+# Env consumed by loop_lib.sh helpers + downstream scripts.
+export QCOW="${QCOW:-${REPO_ROOT}/artifacts/cysvuln/local-qemu/cysvuln.qcow2}"
 SNAP_NAME="${SNAP_NAME:-baseline}"
-WINRM_PORT="${WINRM_PORT:-15985}"
-ADMIN_USER="${ADMIN_USER:-Administrator}"
-ADMIN_PW="${ADMIN_PW:-PizzaMan123!}"
+export WINRM_PORT="${WINRM_PORT:-15985}"
+export ADMIN_USER="${ADMIN_USER:-Administrator}"
+export ADMIN_PW="${ADMIN_PW:-PizzaMan123!}"
 JOE_USER="${JOE_USER:-User_Joe}"
 JOE_PW="${JOE_PW:-VeryStrongPassword123!@#}"
-MGR_USER="${WAZUH_API_USER:-wazuh-wui}"
-MGR_PASS="${WAZUH_API_PASSWORD:-MyS3cr37P450r.*-}"
 AGENT_IP="${AGENT_IP:-10.0.2.15}"
 WAZUH_MANAGER_GW="${WAZUH_MANAGER_GW:-10.0.2.2}"
-PIDFILE="${CYSVULN_PIDFILE:-/tmp/cysvuln-local.pid}"
+export PIDFILE="${CYSVULN_PIDFILE:-/tmp/cysvuln-local.pid}"
 DRAIN_TAIL_S="${DRAIN_TAIL_S:-12}"
 
 echo "================================================="
@@ -123,55 +124,13 @@ if [ "$SKIP_REBUILD" -eq 1 ]; then
     SECRETCON_RUN_ID="$RUN_ID"
     echo "[*] skip-rebuild active: flag tokens will be sniffed from the running VM during iter 1"
 else
-    FLAGS_ENV=$("${REPO_ROOT}/scripts/observability/gen-flags.sh" --run-id "$RUN_ID" --out-dir "$OUT_BASE")
-    # shellcheck disable=SC1090
-    . "$FLAGS_ENV"
-    export SECRETCON_USER_FLAG SECRETCON_ROOT_FLAG
+    loop_gen_or_reuse_flags "$RUN_ID" "$OUT_BASE" >/dev/null
 fi
-
-stop_vm() {
-    # Try graceful WinRM shutdown when the pidfile points at a live QEMU,
-    # then escalate to SIGTERM. Belt-and-suspenders pkill catches the
-    # case where the pidfile was lost (e.g. crash, manual kill) but the
-    # QEMU process is still holding the qcow2 write lock - critical for
-    # snapshot revert to succeed.
-    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
-        python3 - "$WINRM_PORT" "$ADMIN_PW" <<'PY' || true
-import sys, winrm
-port, pw = sys.argv[1:3]
-s = winrm.Session(f"http://127.0.0.1:{port}/wsman", auth=("Administrator", pw), transport="ntlm")
-try:
-    s.run_ps("Stop-Computer -Force")
-except Exception:
-    pass
-PY
-        deadline=$(( $(date +%s) + 60 ))
-        while [ "$(date +%s)" -lt "$deadline" ]; do
-            if [ ! -f "$PIDFILE" ] || ! kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
-                break
-            fi
-            sleep 2
-        done
-        if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
-            kill "$(cat "$PIDFILE")" 2>/dev/null || true
-            sleep 3
-        fi
-    fi
-    if pgrep -f "qemu-system-x86_64.*$(basename "$QCOW")" >/dev/null 2>&1; then
-        pkill -f "qemu-system-x86_64.*$(basename "$QCOW")" 2>/dev/null || true
-        sleep 3
-    fi
-    rm -f "$PIDFILE"
-}
 
 if [ "$SKIP_REBUILD" -eq 0 ]; then
     echo
     echo "[prep] packer rebuild (WAZUH_MANAGER=${WAZUH_MANAGER_GW})"
-    stop_vm
-    if pgrep -f 'qemu-system-x86_64.*cysvuln.qcow2' >/dev/null 2>&1; then
-        pkill -f 'qemu-system-x86_64.*cysvuln.qcow2' || true
-        sleep 3
-    fi
+    loop_stop_vm
     BUILD_LOG="${OUT_BASE}/build.log" \
     WAZUH_MANAGER="$WAZUH_MANAGER_GW" \
     SECRETCON_USER_FLAG="$SECRETCON_USER_FLAG" \
@@ -184,7 +143,7 @@ fi
 if [ "$SKIP_BASELINE" -eq 0 ]; then
     echo
     echo "[prep] baseline snapshot"
-    stop_vm
+    loop_stop_vm
     "${REPO_ROOT}/scripts/observability/baseline-snapshot.sh" --qcow "$QCOW" --name "$SNAP_NAME"
 else
     echo "[prep] skip-baseline: assuming qemu-img snapshot '${SNAP_NAME}' already exists"
@@ -197,19 +156,6 @@ fi
 skip_phase() {
     local id="$1"
     [ -n "$SKIP_PHASES" ] && [[ ",${SKIP_PHASES}," == *",${id},"* ]]
-}
-
-# Emit SECRETCON-ITER-<i>-PHASE-<id>-<BEGIN|END> sentinel via WinRM so
-# the dataset can be sliced unambiguously even when iteration windows
-# share rule IDs.
-marker() {
-    local iter="$1" kind="$2" id="$3"
-    python3 - "$WINRM_PORT" "$ADMIN_PW" "$iter" "$kind" "$id" <<'PY' 2>/dev/null || true
-import sys, winrm
-port, pw, iter_n, kind, pid = sys.argv[1:6]
-s = winrm.Session(f"http://127.0.0.1:{port}/wsman", auth=("Administrator", pw), transport="ntlm")
-s.run_cmd("cmd", ["/c", f"echo SECRETCON-ITER-{iter_n}-PHASE-{pid}-{kind}"])
-PY
 }
 
 run_phase() {
@@ -228,7 +174,7 @@ run_phase() {
     mkdir -p "$dir"
     echo
     echo "  >> phase ${id} (${name})"
-    marker "$iter" BEGIN "$id"
+    loop_winrm_marker BEGIN "$id" "$iter"
     local start_epoch; start_epoch=$(date +%s)
     local start; start=$(date -u +%FT%TZ)
 
@@ -237,7 +183,7 @@ run_phase() {
 
     local end_epoch; end_epoch=$(date +%s)
     local end; end=$(date -u +%FT%TZ)
-    marker "$iter" END "$id"
+    loop_winrm_marker END "$id" "$iter"
 
     sleep "$DRAIN_TAIL_S"
     local since_ts until_ts
@@ -281,7 +227,7 @@ iter_red_scorecard() {
 
     # Grep stdout for the actual flag tokens to confirm the chain
     # recovered the right values, not just *some* string. Tokens are
-    # exported by gen-flags.sh.
+    # exported by loop_gen_or_reuse_flags or sniffed in iter 1.
     local user_phase="${iter_dir}/phase-05-user-flag/stdout.log"
     local root_phase="${iter_dir}/phase-08-root-flag/stdout.log"
     local user_flag_ok=false root_flag_ok=false foothold_ok=false aie_ok=false
@@ -293,9 +239,6 @@ iter_red_scorecard() {
         && grep -Fq "$SECRETCON_ROOT_FLAG" "$root_phase"; then
         root_flag_ok=true
     fi
-    # 04b stdout reports "Exec stager sent" with no shell output (the
-    # callback path would carry whoami). Treat a successful exit code from
-    # 04b as foothold proof when 04a is skipped on user-net.
     local foothold_phase
     for foothold_phase in "${iter_dir}/phase-04a-foothold-callback" "${iter_dir}/phase-04b-foothold-exec"; do
         local fp_summary="${foothold_phase}/summary.json"
@@ -310,7 +253,6 @@ iter_red_scorecard() {
             break
         fi
     done
-    local audit_summary="${iter_dir}/phase-06-aie-audit/summary.json"
     if [ -f "${iter_dir}/phase-06-aie-audit/stdout.log" ] && grep -q 'chain response expected: True' "${iter_dir}/phase-06-aie-audit/stdout.log"; then
         aie_ok=true
     fi
@@ -403,7 +345,7 @@ JSON
 CAMPAIGN_CSV="${OUT_BASE}/campaign-summary.csv"
 echo "iter,start,end,wall_s,user_flag,root_flag,both_flags,foothold_joe,aie_expected,total_alerts,r100507,r100508,r100509,r100510,r100512,r100520,r100530,secretcon_rules" > "$CAMPAIGN_CSV"
 
-trap stop_vm EXIT
+trap loop_stop_vm EXIT
 
 for i in $(seq 1 "$ITERATIONS"); do
     ITER_DIR="${OUT_BASE}/iter-${i}"
@@ -417,9 +359,9 @@ for i in $(seq 1 "$ITERATIONS"); do
     ITER_START_EPOCH=$(date +%s)
     ITER_START=$(date -u +%FT%TZ)
 
-    stop_vm
+    loop_stop_vm
     echo "[*] revert qcow to snapshot '${SNAP_NAME}'"
-    if ! qemu-img snapshot -a "$SNAP_NAME" "$QCOW"; then
+    if ! loop_revert_snapshot "$QCOW" "$SNAP_NAME"; then
         echo "[!] snapshot revert failed; aborting" >&2
         break
     fi
@@ -428,7 +370,7 @@ for i in $(seq 1 "$ITERATIONS"); do
     "${REPO_ROOT}/scripts/run-local-cysvuln.sh" "$QCOW"
 
     echo "[*] gating on WinRM + agent active"
-    WAZUH_AGENT_ID="${WAZUH_AGENT_ID:-001}" \
+    WAZUH_AGENT_IP="$AGENT_IP" \
         "${REPO_ROOT}/scripts/lib/wait_for_winrm.sh" 127.0.0.1 240 || true
 
     # First-iter flag sniff when --skip-rebuild: the QCOW carries flags
@@ -491,7 +433,7 @@ JSON
     run_phase "$i" 04b foothold-exec python3 "${REPO_ROOT}/scripts/validate/check_efs69_response.py" \
         --target 127.0.0.1 --port 18080 --service-port 80 --mode exec --cmd whoami
 
-    run_phase "$i" 05 user-flag "${REPO_ROOT}/scripts/lib/read_user_flag.sh" 127.0.0.1
+    run_phase "$i" 05 user-flag "${REPO_ROOT}/scripts/lib/read_flag.sh" user 127.0.0.1
 
     run_phase "$i" 06 aie-audit python3 "${REPO_ROOT}/scripts/validate/audit_aie.py" \
         --target 127.0.0.1 --port "$WINRM_PORT" \
@@ -504,7 +446,7 @@ JSON
 
     run_phase "$i" 07 privesc "${REPO_ROOT}/scripts/validate-cysvuln-aie-joe.sh" 127.0.0.1
 
-    run_phase "$i" 08 root-flag "${REPO_ROOT}/scripts/lib/read_root_flag.sh" 127.0.0.1
+    run_phase "$i" 08 root-flag "${REPO_ROOT}/scripts/lib/read_flag.sh" root 127.0.0.1
 
     iter_red_scorecard "$i"
     iter_blue_scorecard "$i"
@@ -544,7 +486,7 @@ PY
     echo "$row" >> "$CAMPAIGN_CSV"
 
     echo "[*] iter ${i} wall=${WALL_S}s; stopping VM"
-    stop_vm
+    loop_stop_vm
 done
 
 trap - EXIT

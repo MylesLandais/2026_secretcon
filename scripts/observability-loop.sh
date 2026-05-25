@@ -25,14 +25,17 @@ set -euo pipefail
 # All artifacts under artifacts/cysvuln/observability-loop/<RUN_ID>/.
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=scripts/lib/loop_lib.sh
+. "${REPO_ROOT}/scripts/lib/loop_lib.sh"
+
 ITERATIONS=3
 RUN_ID=""
 SKIP_STACK=0
 SKIP_REBUILD=0
 SKIP_BASELINE=0
 WAZUH_MANAGER_GW="${WAZUH_MANAGER_GW:-10.0.2.2}"
-QCOW="${REPO_ROOT}/artifacts/cysvuln/local-qemu/cysvuln.qcow2"
-SNAP_NAME="baseline"
+QCOW="${QCOW:-${REPO_ROOT}/artifacts/cysvuln/local-qemu/cysvuln.qcow2}"
+SNAP_NAME="${SNAP_NAME:-baseline}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -41,7 +44,7 @@ while [ $# -gt 0 ]; do
         --skip-stack) SKIP_STACK=1; shift ;;
         --skip-rebuild) SKIP_REBUILD=1; shift ;;
         --skip-baseline) SKIP_BASELINE=1; shift ;;
-        -h|--help) sed -n '3,28p' "$0"; exit 0 ;;
+        -h|--help) sed -n '3,25p' "$0"; exit 0 ;;
         *) echo "[!] unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -54,6 +57,15 @@ mkdir -p "$OUT_BASE"
 
 LOOP_LOG="${OUT_BASE}/loop.log"
 exec > >(tee -a "$LOOP_LOG") 2>&1
+
+# Env consumed by loop_lib.sh helpers.
+export PIDFILE="${CYSVULN_PIDFILE:-/tmp/cysvuln-local.pid}"
+export WINRM_PORT="${WINRM_PORT:-15985}"
+export ADMIN_USER="${ADMIN_USER:-Administrator}"
+export ADMIN_PW="${ADMIN_PW:-PizzaMan123!}"
+export QCOW
+
+AGENT_IP="${AGENT_IP:-10.0.2.15}"
 
 echo "================================================="
 echo "SIEM capture loop"
@@ -75,20 +87,13 @@ fi
 # Phase 2: flags
 echo
 echo "[phase] generate flags"
-FLAGS_ENV=$("${REPO_ROOT}/scripts/observability/gen-flags.sh" --run-id "$RUN_ID" --out-dir "$OUT_BASE")
-# shellcheck disable=SC1090
-. "$FLAGS_ENV"
-export SECRETCON_USER_FLAG SECRETCON_ROOT_FLAG
+FLAGS_ENV=$(loop_gen_or_reuse_flags "$RUN_ID" "$OUT_BASE")
+# loop_gen_or_reuse_flags already exported SECRETCON_USER_FLAG / _ROOT_FLAG.
 
 # Phase 3: packer rebuild
 # Kill any pre-existing run-local QEMU first; cp -f on a running qcow2
 # from build-cysvuln-local.sh would corrupt the freshly-built image.
-if pgrep -f 'qemu-system-x86_64.*cysvuln.qcow2' >/dev/null 2>&1; then
-    echo "[*] killing pre-existing run-local QEMU before rebuild"
-    pkill -f 'qemu-system-x86_64.*cysvuln.qcow2' || true
-    sleep 3
-    rm -f "${CYSVULN_PIDFILE:-/tmp/cysvuln-local.pid}"
-fi
+loop_stop_vm
 
 if [ "$SKIP_REBUILD" -eq 0 ]; then
     echo
@@ -115,43 +120,10 @@ fi
 echo
 echo "[phase] iteration loop x${ITERATIONS}"
 
-PIDFILE="${CYSVULN_PIDFILE:-/tmp/cysvuln-local.pid}"
-WINRM_PORT="${WINRM_PORT:-15985}"
-ADMIN_PW="${ADMIN_PW:-PizzaMan123!}"
-MGR_USER="${WAZUH_API_USER:-wazuh-wui}"
-MGR_PASS="${WAZUH_API_PASSWORD:-MyS3cr37P450r.*-}"
-AGENT_IP="${AGENT_IP:-10.0.2.15}"
-
 SUMMARY_CSV="${OUT_BASE}/summary.csv"
 echo "iter,start,end,chain_exit,alert_count,unique_rule_ids,msiexec_rows" > "$SUMMARY_CSV"
 
-stop_vm() {
-    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
-        python3 - "$WINRM_PORT" "$ADMIN_PW" <<'PY' || true
-import sys, winrm
-port, pw = sys.argv[1:3]
-s = winrm.Session(f"http://127.0.0.1:{port}/wsman", auth=("Administrator", pw), transport="ntlm")
-try:
-    s.run_ps("Stop-Computer -Force")
-except Exception:
-    pass
-PY
-        deadline=$(( $(date +%s) + 120 ))
-        while [ "$(date +%s)" -lt "$deadline" ]; do
-            if [ ! -f "$PIDFILE" ] || ! kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
-                break
-            fi
-            sleep 2
-        done
-        if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
-            kill "$(cat "$PIDFILE")" || true
-            sleep 3
-        fi
-    fi
-    rm -f "$PIDFILE"
-}
-
-trap stop_vm EXIT
+trap loop_stop_vm EXIT
 
 for i in $(seq 1 "$ITERATIONS"); do
     ITER_DIR="${OUT_BASE}/iter-${i}"
@@ -160,37 +132,15 @@ for i in $(seq 1 "$ITERATIONS"); do
     echo
     echo "----- iter ${i}/${ITERATIONS} -----"
     echo "[*] reverting qcow to baseline"
-    stop_vm
-    qemu-img snapshot -a "$SNAP_NAME" "$QCOW"
+    loop_stop_vm
+    loop_revert_snapshot "$QCOW" "$SNAP_NAME"
 
     echo "[*] booting VM"
     "${REPO_ROOT}/scripts/run-local-cysvuln.sh" "$QCOW"
 
-    echo "[*] waiting for WinRM"
-    deadline=$(( $(date +%s) + 300 ))
-    while [ "$(date +%s)" -lt "$deadline" ]; do
-        if timeout 5 bash -c "</dev/tcp/127.0.0.1/${WINRM_PORT}" 2>/dev/null; then
-            break
-        fi
-        sleep 5
-    done
-
-    echo "[*] waiting for agent active"
-    deadline=$(( $(date +%s) + 90 ))
-    while [ "$(date +%s)" -lt "$deadline" ]; do
-        token=$(curl -sk --max-time 5 -u "${MGR_USER}:${MGR_PASS}" -X POST \
-            "https://127.0.0.1:55000/security/user/authenticate?raw=true" 2>/dev/null || true)
-        if [ -n "$token" ] && [[ "$token" != *"error"* ]]; then
-            status=$(curl -sk --max-time 5 -H "Authorization: Bearer ${token}" \
-                "https://127.0.0.1:55000/agents?ip=${AGENT_IP}" 2>/dev/null \
-                | jq -r '.data.affected_items[0].status // "missing"')
-            if [ "$status" = "active" ]; then
-                echo "    agent active"
-                break
-            fi
-        fi
-        sleep 5
-    done
+    echo "[*] waiting for WinRM + Wazuh agent (ip=${AGENT_IP})"
+    WAZUH_AGENT_IP="$AGENT_IP" \
+        "${REPO_ROOT}/scripts/lib/wait_for_winrm.sh" 127.0.0.1 300 || true
 
     START_TS="$(date -u +%FT%TZ)"
     echo "[*] running validate-cysvuln-chain.sh (start=${START_TS})"
@@ -239,7 +189,7 @@ except Exception as exc:
 PY
 
     echo "[*] stopping VM (end of iter ${i})"
-    stop_vm
+    loop_stop_vm
 done
 
 trap - EXIT

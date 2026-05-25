@@ -15,8 +15,13 @@ set -euo pipefail
 #   WINRM_PORT     default 15985
 #   ADMIN_USER     default Administrator
 #   ADMIN_PW       default PizzaMan123!
-#   WAIT_AGENT     1 to also poll Wazuh manager for agent=active (default 1)
-#   WAZUH_AGENT_ID id to poll (default 001)
+#   WAIT_AGENT        1 to also poll Wazuh manager for agent=active (default 1)
+#   WAIT_AGENT_STRICT 1 to exit non-zero when the agent never reaches active
+#                     (default 0; baseline-snapshot.sh sets this so it
+#                     refuses to snapshot a silent baseline)
+#   WAZUH_AGENT_ID    id to poll (default 001)
+#   WAZUH_AGENT_IP    optional ip filter (preferred when set; defaults to
+#                     agent-id query for backward compatibility)
 
 TARGET="${1:-127.0.0.1}"
 TIMEOUT_SEC="${2:-240}"
@@ -24,7 +29,9 @@ WINRM_PORT="${WINRM_PORT:-15985}"
 ADMIN_USER="${ADMIN_USER:-Administrator}"
 ADMIN_PW="${ADMIN_PW:-PizzaMan123!}"
 WAIT_AGENT="${WAIT_AGENT:-1}"
+WAIT_AGENT_STRICT="${WAIT_AGENT_STRICT:-0}"
 WAZUH_AGENT_ID="${WAZUH_AGENT_ID:-001}"
+WAZUH_AGENT_IP="${WAZUH_AGENT_IP:-}"
 
 deadline=$(( $(date +%s) + TIMEOUT_SEC ))
 
@@ -51,26 +58,37 @@ fi
 if [ "$WAIT_AGENT" = "1" ]; then
   api_user="${WAZUH_API_USER:-wazuh-wui}"
   api_pass="${WAZUH_API_PASSWORD:-MyS3cr37P450r.*-}"
-  echo "[*] Waiting for Wazuh agent ${WAZUH_AGENT_ID}=active..."
+  if [ -n "$WAZUH_AGENT_IP" ]; then
+    label="ip=${WAZUH_AGENT_IP}"
+    query="ip=${WAZUH_AGENT_IP}"
+  else
+    label="id=${WAZUH_AGENT_ID}"
+    query="agents_list=${WAZUH_AGENT_ID}"
+  fi
+  echo "[*] Waiting for Wazuh agent ${label}=active..."
   agent_deadline=$(( $(date +%s) + 120 ))
+  status=""
   token="$(curl -sk --max-time 5 -u "${api_user}:${api_pass}" -X POST \
     "https://127.0.0.1:55000/security/user/authenticate?raw=true" 2>/dev/null || true)"
-  if [ -z "$token" ]; then
+  if [ -z "$token" ] || [[ "$token" == *"error"* ]]; then
     echo "[*] Wazuh API auth failed; skipping agent gate" >&2
   else
     while [ "$(date +%s)" -lt "$agent_deadline" ]; do
       status=$(curl -sk --max-time 5 -H "Authorization: Bearer $token" \
-        "https://127.0.0.1:55000/agents?agents_list=${WAZUH_AGENT_ID}" 2>/dev/null \
+        "https://127.0.0.1:55000/agents?${query}" 2>/dev/null \
         | python3 -c 'import sys,json; d=json.load(sys.stdin); a=d.get("data",{}).get("affected_items",[]); print(a[0].get("status","") if a else "")' 2>/dev/null \
         || true)
       if [ "$status" = "active" ]; then
-        echo "[+] agent ${WAZUH_AGENT_ID} active"
+        echo "[+] agent ${label} active"
         break
       fi
       sleep 3
     done
     if [ "$status" != "active" ]; then
       echo "[!] agent did not reach active state (last: ${status:-unknown})" >&2
+      if [ "$WAIT_AGENT_STRICT" = "1" ]; then
+        exit 1
+      fi
     fi
   fi
 fi

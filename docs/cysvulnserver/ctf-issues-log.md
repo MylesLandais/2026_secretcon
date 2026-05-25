@@ -89,7 +89,7 @@ deleting so the history is intact.
   - Enable ScriptBlock logging (event 4104 in `Microsoft-Windows-PowerShell/Operational`)
     in the bootstrap and add a rule chaining off `script_block_text`
     containing `user.txt` / `root.txt`.
-  - Or, replace `read_user_flag.sh` with a `cmd /c type` invocation so
+  - Or, replace `read_flag.sh user` with a `cmd /c type` invocation so
     the cmd image lands in EID 1 with the path in `cmdLine`.
 - Status: open
 
