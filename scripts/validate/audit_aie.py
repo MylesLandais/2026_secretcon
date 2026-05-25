@@ -17,9 +17,11 @@ Indicators checked:
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import sys
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 
 import winrm
 
@@ -157,6 +159,14 @@ def evaluate(data: dict, target: str, user: str) -> AieReport:
     )
 
 
+def _session(target: str, user: str, password: str, port: int) -> winrm.Session:
+    return winrm.Session(
+        f"http://{target}:{port}/wsman",
+        auth=(user, password),
+        transport="ntlm",
+    )
+
+
 def query(
     target: str,
     user: str,
@@ -164,11 +174,7 @@ def query(
     port: int = 5985,
     profile_user: str | None = None,
 ) -> dict:
-    s = winrm.Session(
-        f"http://{target}:{port}/wsman",
-        auth=(user, password),
-        transport="ntlm",
-    )
+    s = _session(target, user, password, port)
     if profile_user:
         ps = "\n".join(
             line for line in PS_HIVE.splitlines() if not line.strip().startswith("param(")
@@ -184,6 +190,38 @@ def query(
     return json.loads(raw)
 
 
+def write_remote_json(
+    target: str,
+    user: str,
+    password: str,
+    port: int,
+    remote_path: str,
+    payload: dict,
+) -> None:
+    """Drop a JSON file on the remote Windows host so the Wazuh agent tails it.
+
+    Sysmon EID 13 (registry value read) is suppressed in the SwiftOnSecurity
+    config for HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer, so the
+    audit registry reads do not reach the SIEM. Writing the structured result
+    to C:\\Users\\Public\\audit-aie-*.json gives the SOC a paper trail without
+    needing a Sysmon config change.
+    """
+    s = _session(target, user, password, port)
+    encoded = base64.b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode()
+    ps = (
+        f"$bytes = [Convert]::FromBase64String('{encoded}');\n"
+        f"$dir = Split-Path -Parent '{remote_path}';\n"
+        "if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }\n"
+        f"[IO.File]::WriteAllBytes('{remote_path}', $bytes)\n"
+    )
+    r = s.run_ps(ps)
+    if r.status_code != 0:
+        raise RuntimeError(
+            f"remote audit JSON write failed (status {r.status_code}): "
+            f"{r.std_err.decode(errors='replace')}"
+        )
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--target", required=True)
@@ -194,7 +232,18 @@ def main() -> int:
         "--profile-user",
         help="Load HKCU AlwaysInstallElevated from this local user's NTUSER.DAT (admin WinRM)",
     )
-    p.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    p.add_argument("--json", action="store_true", help="emit JSON to stdout instead of text")
+    p.add_argument(
+        "--out-json",
+        nargs="?",
+        const="__default__",
+        help=(
+            "Write report JSON to a path on the *remote* Windows target so the "
+            "Wazuh agent's C:\\Users\\Public\\audit-aie-*.json subscription "
+            "picks it up. Pass without a value to use "
+            "C:\\Users\\Public\\audit-aie-<UTC-ts>.json."
+        ),
+    )
     args = p.parse_args()
 
     data = query(
@@ -211,6 +260,21 @@ def main() -> int:
         print(json.dumps(asdict(report), indent=2))
     else:
         print(report.summary)
+
+    if args.out_json:
+        remote_path = args.out_json
+        if remote_path == "__default__":
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            remote_path = f"C:\\Users\\Public\\audit-aie-{ts}.json"
+        write_remote_json(
+            args.target,
+            args.user,
+            args.password,
+            args.port,
+            remote_path,
+            asdict(report),
+        )
+        print(f"[*] remote audit JSON: {remote_path}", file=sys.stderr)
 
     return 0 if report.chain_response_expected else 1
 

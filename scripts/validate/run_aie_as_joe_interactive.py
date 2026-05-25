@@ -13,12 +13,12 @@ import subprocess
 import sys
 import time
 
-FLAG_PATH = r"C:\Users\Public\aie-flag.txt"
+DEFAULT_FLAG_PATH = r"C:\Users\Public\aie-flag.txt"
+DEFAULT_RESULT_PATH = r"C:\Users\Public\aie-validation-result.txt"
+DEFAULT_MSI_PATH = r"C:\Users\Public\aie-validation-payload.msi"
+DEFAULT_LOG_PATH = r"C:\Users\Public\aie-joe-validation.log"
 ROOT_PATH = r"C:\Users\Administrator\Desktop\root.txt"
-RESULT_PATH = r"C:\Users\Public\aie-validation-result.txt"
 VALIDATE_SCRIPT = r"C:\secretcon\validate-aie.ps1"
-VALIDATION_MSI = r"C:\Users\Public\aie-validation-payload.msi"
-VALIDATION_LOG = r"C:\Users\Public\aie-joe-validation.log"
 PSEXEC = r"C:\Users\Public\PsExec.exe"
 
 
@@ -43,9 +43,9 @@ def run_ps(session, script: str) -> tuple[int, str, str]:
     return r.status_code, out, err
 
 
-def clear_artifacts(session) -> None:
+def clear_artifacts(session, flag_path: str, result_path: str) -> None:
     ps = f"""
-Remove-Item '{FLAG_PATH}','{RESULT_PATH}' -Force -ErrorAction SilentlyContinue
+Remove-Item '{flag_path}','{result_path}' -Force -ErrorAction SilentlyContinue
 """
     run_ps(session, ps)
 
@@ -74,14 +74,22 @@ exit 1
     return None
 
 
-def psexec_launch(session, joe_password: str, session_id: str | None, *, detach: bool) -> tuple[int, str]:
+def psexec_launch(
+    session,
+    joe_password: str,
+    session_id: str | None,
+    *,
+    detach: bool,
+    msi_path: str,
+    log_path: str,
+) -> tuple[int, str]:
     joe_pw = joe_password.replace("'", "''")
     i_args = f"-i {session_id}" if session_id else "-i"
     d_flag = "-d " if detach else ""
     ps = f"""
 $psexec = '{PSEXEC}'
 if (-not (Test-Path $psexec)) {{ Write-Host 'PsExec missing'; exit 10 }}
-& $psexec -accepteula -u User_Joe -p '{joe_pw}' {i_args} {d_flag}\\\\localhost cmd.exe /c "msiexec /quiet /norestart /i {VALIDATION_MSI} /l*v {VALIDATION_LOG}" 2>&1 | ForEach-Object {{ Write-Host $_ }}
+& $psexec -accepteula -u User_Joe -p '{joe_pw}' {i_args} {d_flag}\\\\localhost cmd.exe /c "msiexec /quiet /norestart /i {msi_path} /l*v {log_path}" 2>&1 | ForEach-Object {{ Write-Host $_ }}
 Write-Host "[*] PsExec msiexec finished ({i_args})"
 exit 0
 """
@@ -112,16 +120,23 @@ def rdp_bootstrap(target: str, rdp_port: int, joe_password: str, wait: float) ->
     return proc
 
 
-def poll_flag(session, timeout: float, interval: float = 5.0) -> tuple[bool, str]:
+def poll_flag(
+    session,
+    timeout: float,
+    *,
+    flag_path: str,
+    result_path: str,
+    interval: float = 5.0,
+) -> tuple[bool, str]:
     deadline = time.monotonic() + timeout
     last_out = ""
     while time.monotonic() < deadline:
         code, out, _ = run_ps(
             session,
             f"""
-$aie = Get-Content '{FLAG_PATH}' -Raw -EA SilentlyContinue
+$aie = Get-Content '{flag_path}' -Raw -EA SilentlyContinue
 $root = Get-Content '{ROOT_PATH}' -Raw -EA SilentlyContinue
-$log = Get-Content '{RESULT_PATH}' -Raw -EA SilentlyContinue
+$log = Get-Content '{result_path}' -Raw -EA SilentlyContinue
 if ($aie -and $root) {{
   Write-Host "aie-flag:" $aie.Trim()
   Write-Host "root.txt:" $root.Trim()
@@ -150,12 +165,32 @@ def main() -> int:
     p.add_argument("--joe-password", default="VeryStrongPassword123!@#")
     p.add_argument("--poll-timeout", type=float, default=120.0)
     p.add_argument("--skip-rdp-bootstrap", action="store_true")
+    p.add_argument(
+        "--msi-path",
+        default=DEFAULT_MSI_PATH,
+        help="Victim path of the MSI msiexec should install (default: wixl probe)",
+    )
+    p.add_argument(
+        "--flag-path",
+        default=DEFAULT_FLAG_PATH,
+        help="Victim path the deferred CustomAction writes (cross-checked against root.txt)",
+    )
+    p.add_argument(
+        "--log-path",
+        default=DEFAULT_LOG_PATH,
+        help="Victim path msiexec writes its /l*v log to",
+    )
+    p.add_argument(
+        "--result-path",
+        default=DEFAULT_RESULT_PATH,
+        help="Optional secondary result log surfaced during polling",
+    )
     args = p.parse_args()
 
     session = winrm_session(args.target, args.winrm_port, "Administrator", args.admin_password)
 
     print("[*] Clearing prior AIE artifacts...")
-    clear_artifacts(session)
+    clear_artifacts(session, args.flag_path, args.result_path)
 
     rdp_proc: subprocess.Popen | None = None
     sid = query_joe_session(session)
@@ -167,8 +202,15 @@ def main() -> int:
     elif sid:
         print(f"[*] Existing User_Joe session: {sid}")
 
-    print("[*] Running validate-aie.ps1 via PsExec (synchronous)...")
-    code, out = psexec_launch(session, args.joe_password, sid, detach=False)
+    print("[*] Running msiexec via PsExec (synchronous)...")
+    code, out = psexec_launch(
+        session,
+        args.joe_password,
+        sid,
+        detach=False,
+        msi_path=args.msi_path,
+        log_path=args.log_path,
+    )
     print(out)
     if rdp_proc is not None:
         rdp_proc.terminate()
@@ -178,13 +220,23 @@ def main() -> int:
             rdp_proc.kill()
 
     if code == 0:
-        ok, poll_out = poll_flag(session, 10.0)
+        ok, poll_out = poll_flag(
+            session,
+            10.0,
+            flag_path=args.flag_path,
+            result_path=args.result_path,
+        )
         if ok:
             print(poll_out)
             print("[+] AIE privesc confirmed via interactive User_Joe")
             return 0
 
-    ok, poll_out = poll_flag(session, args.poll_timeout)
+    ok, poll_out = poll_flag(
+        session,
+        args.poll_timeout,
+        flag_path=args.flag_path,
+        result_path=args.result_path,
+    )
     if ok:
         print(poll_out)
         print("[+] AIE privesc confirmed via interactive User_Joe")

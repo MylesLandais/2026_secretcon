@@ -50,6 +50,11 @@ Thumbs.db
 artifacts/
 *.qcow2
 *.vhdx
+*.ova
+*.vmdk
+*.nvram
+*.ovf
+*.mf
 __pycache__/
 **/__pycache__/
 *.pyc
@@ -72,3 +77,32 @@ infrastructure/packer/iso/
 infrastructure/artifacts/cysvuln/*.exe
 infrastructure/artifacts/cysvuln/*.msi
 !infrastructure/artifacts/cysvuln/.gitkeep
+
+# Wazuh local-lab docker stack (generated certs + .env + named volumes)
+infrastructure/wazuh-docker/.env
+infrastructure/wazuh-docker/config/wazuh_indexer_ssl_certs/
+infrastructure/wazuh-docker/data/
+
+# SIEM capture loop run artifacts (randomized flags, drained alerts, etc.)
+artifacts/cysvuln/observability-loop/
+
+# AD Chain 8 - WIP reproduction of third-party (Hack Academy / OSCP) OVAs.
+# Not a SecretCon-original challenge; keep off-tree until it earns its own
+# box with red FAQ + blue FAQ + infra README + skill.
+docs/ad-chain8/
+docs/ad-chain8-audit-baseline.md
+docs/ad-chain8-reproduction.md
+docs/runbooks/forensics-ad-chain8.md
+scripts/forensics/
+scripts/ad-chain8/
+scripts/run-chain8-dc.sh
+infrastructure/sysmon/chain8-sysmon-delta.xml
+infrastructure/wazuh-docker/config/wazuh_cluster/shared/chain8*/
+
+# Bloodhound docker stack - WIP, currently scoped to the AD Chain 8 effort.
+infrastructure/bloodhound-docker/
+scripts/bloodhound-docker-up.sh
+scripts/bloodhound-docker-down.sh
+
+# Cursor process docs - planning history stays local
+.cursor/plans/*.plan.md

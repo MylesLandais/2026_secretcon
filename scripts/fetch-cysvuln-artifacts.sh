@@ -18,6 +18,9 @@ EFS_PATH="${ART_DIR}/${EFS_NAME}"
 EFS_SHA256="${CYSVULN_INSTALLER_HASH:-60ea3256cd272797675e2ec6ea8e02d8ad51209f1cbf9083bc909284b5331d79}"
 MSI_NAME="aie-validation-payload.msi"
 MSI_PATH="${ART_DIR}/${MSI_NAME}"
+SHARPUP_NAME="SharpUp.exe"
+SHARPUP_PATH="${ART_DIR}/${SHARPUP_NAME}"
+SHARPUP_SHA256="${CYSVULN_SHARPUP_HASH:-}"
 GENERATE_MSI=0
 
 for arg in "$@"; do
@@ -106,6 +109,44 @@ else
       $MSI_PATH
 EOF
     exit 2
+fi
+
+# SharpUp.exe (GhostPack) — vendored, gitignored. Optional; the
+# scripts/run-sharpup.sh helper will refuse to run if missing, but the
+# CysVuln packer/validation pipeline does not need it.
+if [ -f "$SHARPUP_PATH" ]; then
+    if [ -n "$SHARPUP_SHA256" ]; then
+        verify_sha256 "$SHARPUP_PATH" "$SHARPUP_SHA256"
+    else
+        observed_sharpup="$(sha256sum "$SHARPUP_PATH" | awk '{print $1}')"
+        echo "[*] $(basename "$SHARPUP_PATH") present (sha256=${observed_sharpup})"
+        echo "    pin via CYSVULN_SHARPUP_HASH after a trusted first build"
+    fi
+elif [ -n "${SHARPUP_URL:-}" ]; then
+    echo "[*] downloading ${SHARPUP_NAME} from ${SHARPUP_URL}"
+    curl -L --fail -o "$SHARPUP_PATH" "$SHARPUP_URL"
+    if [ -n "$SHARPUP_SHA256" ]; then
+        verify_sha256 "$SHARPUP_PATH" "$SHARPUP_SHA256"
+    else
+        observed_sharpup="$(sha256sum "$SHARPUP_PATH" | awk '{print $1}')"
+        echo "[*] downloaded $(basename "$SHARPUP_PATH") (sha256=${observed_sharpup})"
+    fi
+else
+    cat <<EOF
+[!] ${SHARPUP_NAME} not vendored at:
+    $SHARPUP_PATH
+
+    Optional. Only needed for ./scripts/run-sharpup.sh. Build it from
+    source (no upstream prebuilt releases):
+
+      git clone https://github.com/GhostPack/SharpUp
+      cd SharpUp && dotnet build -c Release
+      cp bin/Release/net4*/SharpUp.exe \\
+         $SHARPUP_PATH
+
+    Or set SHARPUP_URL to a direct download and re-run this script. Pin
+    the resulting SHA-256 via CYSVULN_SHARPUP_HASH.
+EOF
 fi
 
 # OpenSSH zip (vendored, gitignored)

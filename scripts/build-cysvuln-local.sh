@@ -24,10 +24,15 @@ mkdir -p "$(dirname "$LOG")"
 export SECRETCON_USER_FLAG="${SECRETCON_USER_FLAG:-cysvuln-user-flag-placeholder}"
 export SECRETCON_ROOT_FLAG="${SECRETCON_ROOT_FLAG:-cysvuln-root-flag-placeholder}"
 export WAZUH_ENROLLMENT_OPTIONAL="${WAZUH_ENROLLMENT_OPTIONAL:-1}"
+# Default to the Proxmox-SIEM IP for normal lab builds; the SIEM-capture
+# loop overrides this with 10.0.2.2 (QEMU user-net host gateway) so the
+# bootstrapped agent dials the local docker manager.
+WAZUH_MANAGER="${WAZUH_MANAGER:-192.168.61.10}"
 
 echo "[*] Building cysvuln-local"
-echo "    ISO:  $ISO"
-echo "    Log:  $LOG"
+echo "    ISO:           $ISO"
+echo "    Log:           $LOG"
+echo "    WAZUH_MANAGER: $WAZUH_MANAGER"
 
 cd "${REPO_ROOT}/infrastructure/packer/cysvuln"
 OUTPUT_DIR="${REPO_ROOT}/infrastructure/packer/cysvuln/packer-output/cysvuln-local"
@@ -40,6 +45,7 @@ rm -rf "$OUTPUT_DIR"
 packer init .
 packer build -only=cysvuln-local.qemu.cysvuln-local \
     -var "cysvuln_iso_url=file://${ISO}" \
+    -var "cysvuln_wazuh_manager=${WAZUH_MANAGER}" \
     . 2>&1 | tee "$LOG"
 
 QCOW="${OUTPUT_DIR}/cysvuln.qcow2"

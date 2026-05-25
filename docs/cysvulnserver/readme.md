@@ -85,6 +85,46 @@ Skips unauth EFS foothold; uses PsExec/RDP to run `msiexec` in an interactive Jo
 
 Log: `artifacts/cysvuln/validation-aie-joe.log`
 
+### Manual enumeration — winPEAS as User_Joe
+
+```bash
+./scripts/run-winpeas.sh 127.0.0.1
+```
+
+Captures `winPEASx64.exe` output (run as `User_Joe` via a one-shot
+scheduled task driven from the Administrator WinRM session) and tees it
+to `artifacts/cysvuln/winpeas-joe-<timestamp>.log`. Curated findings and
+the headline AlwaysInstallElevated / UAC indicators are written up in
+[winpeas.md](winpeas.md).
+
+### Manual enumeration — SharpUp as User_Joe
+
+```bash
+./scripts/fetch-cysvuln-artifacts.sh   # warns if SharpUp.exe absent
+./scripts/run-sharpup.sh 127.0.0.1
+```
+
+GhostPack's focused C# privesc auditor. Same execution harness as the
+winPEAS runner (shared via `scripts/validate/joe_task_runner.py`).
+Binary is vendored at `infrastructure/artifacts/cysvuln/SharpUp.exe` —
+build instructions are in [sharpup.md](sharpup.md), which also has the
+curated findings (AIE, AutoLogons, Unattend.xml, unquoted service
+paths).
+
+### Manual privesc — msfvenom MSI as User_Joe
+
+```bash
+nix develop .#kali
+./scripts/run-msfvenom-aie.sh 127.0.0.1
+```
+
+Builds an `windows/exec` MSI with stock msfvenom, stages it on the
+victim, and triggers it under an interactive `User_Joe` session via
+PsExec/RDP (the `msiexec` 1601 interactive-logon constraint is
+documented in walkthrough Phase 7). Confirms `AlwaysInstallElevated`
+end-to-end by copying SYSTEM-only `root.txt` into a public path that
+User_Joe can read. Full curated writeup in [msfvenom.md](msfvenom.md).
+
 Captured output (2026-05-24 local QEMU, `flag{cysvuln-root-local-test}`):
 
 ```
@@ -182,8 +222,85 @@ Expected: 9 pass / 0 fail (Wazuh check skipped without `WAZUH_API_PASSWORD`).
 | `User_Joe` | `VeryStrongPassword123!@#` | Seeded on desktop in `Notes.txt` |
 | `Administrator` | `PizzaMan123!` | Build / WinRM smoke only |
 
+## SIEM capture loop (blue team observability)
+
+For the analyst tier — randomize flags, rebuild the VM with the Wazuh
+agent pointed at a local-lab docker SIEM, then run the full validation
+chain three times under snapshot-restore and drain alerts for analyst
+review:
+
+```bash
+./scripts/observability-loop.sh         # green-field run (~75-90 min)
+./scripts/observability-loop.sh --skip-rebuild --skip-baseline  # re-iter
+```
+
+The orchestrator writes one directory per run under
+`artifacts/cysvuln/observability-loop/<run-id>/` (gitignored), with
+per-iteration `alerts.json`, raw `archives.json`, a curated
+`msiexec-timeline.json` (the single artifact a downstream analyst LLM
+should read first), `summary.json`, and a chain stdout log. A top-level
+`summary.csv` and `raw-notes.md` seed the hand-authored report at
+[blue-team-report.md](blue-team-report.md).
+
+Stack lives under [infrastructure/wazuh-docker/](../../infrastructure/wazuh-docker/);
+bring up / tear down with `./scripts/wazuh-docker-up.sh` /
+`./scripts/wazuh-docker-down.sh`. Dashboard: <https://127.0.0.1:1443>.
+
+### Export and replay the dataset
+
+A completed loop run can be turned into a portable analyst dataset
+(alerts + every decoded event + manager config + agent metadata +
+tamper-evident manifest) and optionally replayed into the production
+Wazuh manager on Proxmox:
+
+```bash
+./scripts/wazuh-export-dataset.sh --run-id <run-id> --window-from-loop --tarball
+./scripts/wazuh-replay-to-proxmox.sh \
+    --dataset artifacts/cysvuln/observability-loop/<run-id>/dataset \
+    --target 192.168.61.10:514 --source archives
+```
+
+Full procedure (including the Proxmox-side syslog `<remote>` block):
+[../runbooks/wazuh-dataset-export-and-replay.md](../runbooks/wazuh-dataset-export-and-replay.md).
+
+### Baseline observability tour (per-phase SIEM footprint)
+
+Maps each walkthrough step (including winPEAS, SharpUp, EFS foothold)
+to drained Wazuh alerts/archives so analyst agents know what each action
+looks like in isolation:
+
+```bash
+./scripts/observability/run-baseline-tour.sh --target 127.0.0.1
+```
+
+Artifacts under `artifacts/cysvuln/observability-baseline/<run-id>/`.
+Hand-authored analysis: [baseline-observability.md](baseline-observability.md).
+
+### 10x stress campaign (red + blue scorecards)
+
+Runs the full walkthrough under snapshot-restore for N iterations (default
+10), with the enriched rule pack (100507-100530) and dual scorecards so
+both CTF and SOC teams read the same dataset:
+
+```bash
+./scripts/observability/stress-campaign.sh --iterations 10
+./scripts/wazuh-export-dataset.sh \
+    --run-id <campaign-id> \
+    --source-dir artifacts/cysvuln/stress-campaign/<campaign-id> \
+    --window-from-loop --tarball
+```
+
+Artifacts under `artifacts/cysvuln/stress-campaign/<run-id>/`. The latest
+campaign hit 10/10 on both flags and 10/10 on the four AIE-leg rules; see
+[stress-campaign-report.md](stress-campaign-report.md) and
+[ctf-issues-log.md](ctf-issues-log.md).
+
 ## Artifacts
 
 - Packer: `infrastructure/packer/cysvuln/local-qemu-cysvuln.pkr.hcl`
 - Bootstrap: `provisioning/powershell/bootstrap_cysvuln.ps1`
 - Validation: `scripts/validate/`, `scripts/verify-cysvuln.sh`
+- SIEM stack: `infrastructure/wazuh-docker/`
+- Observability loop: `scripts/observability-loop.sh`, `scripts/observability/`
+- Baseline tour: `scripts/observability/run-baseline-tour.sh`, [baseline-observability.md](baseline-observability.md)
+- Stress campaign: `scripts/observability/stress-campaign.sh`, [stress-campaign-report.md](stress-campaign-report.md), [ctf-issues-log.md](ctf-issues-log.md)

@@ -1,0 +1,457 @@
+<!--
+  SecretCon CysVuln custom rule pack.
+
+  These rules chain off Wazuh's built-in Sysmon and Windows event-channel
+  decoders. They only fire because shared/ews/agent.conf subscribes the
+  agent to the Sysmon, MSI/Operational, and aie-*.log streams - if the
+  manager loads but the agent.conf is missing/wrong, expect zero hits.
+
+  Seeded so the blue-team report has named rule IDs from iteration 1
+  rather than after-the-fact detection-engineering recommendations.
+
+  Rule field selectors use type="pcre2" so the regex flavor matches
+  what we write (case-insensitive flags, alternation, anchors).
+
+  ID layout:
+    100501-100509  general walkthrough phase hits (incl. enum tools)
+    100510-100517  msiexec deep-dive coverage (analyst-agent priority)
+    100520-100521  flag access receipts (Sysmon EID 11 / commandLine)
+    100530         velocity / correlation (enum -> privesc)
+-->
+<group name="secretcon,cysvuln,windows,">
+
+  <!-- ============================================================
+       100501-100509: general walkthrough phase coverage
+       ============================================================ -->
+
+  <rule id="100501" level="8">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\msiexec\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)/quiet</field>
+    <description>SecretCon: msiexec.exe spawned with /quiet (AIE candidate)</description>
+    <mitre>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
+  <rule id="100502" level="9">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\cmd\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)copy.*root\.txt</field>
+    <description>SecretCon: cmd.exe copy of root.txt (privesc receipt)</description>
+    <mitre>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
+  <rule id="100503" level="6">
+    <if_group>sysmon_event3</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\fswsService\.exe$</field>
+    <field name="win.eventdata.destinationPort" type="pcre2">^80$</field>
+    <description>SecretCon: inbound TCP/80 to fswsService.exe (EFS foothold candidate)</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+  </rule>
+
+  <rule id="100504" level="7">
+    <if_group>sysmon_event_11</if_group>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\Users\\Public\\aie-</field>
+    <description>SecretCon: file written under C:\Users\Public\aie-* (probe artifact)</description>
+    <mitre>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
+  <rule id="100505" level="5">
+    <if_group>sysmon_event_13</if_group>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\Policies\\Microsoft\\Windows\\Installer\\AlwaysInstallElevated$</field>
+    <description>SecretCon: AlwaysInstallElevated registry value read/set</description>
+    <mitre>
+      <id>T1112</id>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
+  <!-- 100506: EFS HTTP access log line (Phase 04 visibility).
+
+       Surface every line tailed from
+       C:\EFS Software\Easy File Sharing Web Server\log\YYYYMMDD.txt
+       so the Phase 04 (EFS foothold) attack surface stops being a
+       SIEM blind spot. Without this rule the lines sit in
+       archives.json (logall_json) but never reach alerts.json, and
+       the baseline tour shows only the post-exploitation Sysmon EID
+       1 hits, never the actual HTTP request that triggered EDB-42256.
+
+       Log shape is NCSA Common Log Format-ish, e.g.
+         127.0.0.1 -  - [25/May/2026:15:18:30 - -] "GET /?probe=1" - - "" "-"
+       and the post-exploit crash variant which has empty IP/method
+       fields because EDB-42256 corrupts the parser before the
+       request line is reassembled, e.g.
+          -  - [25/May/2026:15:26:53 - -] "" - - "" "-"
+       Both are interesting to the analyst (the empty-method one is
+       a smoking-gun EDB-42256 signature), so we anchor on the EFS-
+       unique bracketed-date pattern that no other tailed log emits.
+
+       Wazuh treats syslog-format passthrough lines that no decoder
+       claims as decoder={} events; an <if_sid> parent never fires
+       (this is why the legacy rule 100517 also produces zero alerts,
+       to be fixed in a follow-up). We therefore make 100506 a root
+       rule and scope with <location> to the EFS log path.
+
+       Level 3 to land in alerts.json without flooding the
+       dashboard. Tighten to EDB-42256 signature bytes (oversized
+       Host header, ROP gadget pattern) in a follow-up plan. -->
+  <rule id="100506" level="3">
+    <location type="pcre2">(?i)EFS Software</location>
+    <match type="pcre2">\[\d{2}/[A-Za-z]{3}/\d{4}:\d{2}:\d{2}:\d{2}\s</match>
+    <description>SecretCon: EFS HTTP access log line (Phase 04 visibility)</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+  </rule>
+
+  <!-- 100507: EFS foothold crash receipt. EDB-42256 / exec-stager path
+       reliably faults fswsService.exe with access violation 0xc0000005;
+       Application channel EID 1000 carries the faulting binary path.
+       Stronger Phase 04 signal than 100503 (Sysmon EID 3) which is
+       gated by SwiftOnSecurity network-connect filters. -->
+  <rule id="100507" level="10">
+    <decoded_as>windows_eventchannel</decoded_as>
+    <field name="win.system.providerName" type="pcre2">^Application Error$</field>
+    <field name="win.system.eventID" type="pcre2">^1000$</field>
+    <match type="pcre2">(?i)fswsService\.exe.*c0000005|c0000005.*fswsService\.exe</match>
+    <description>SecretCon: fswsService.exe crash (EDB-42256 foothold receipt)</description>
+    <mitre>
+      <id>T1190</id>
+      <id>T1499.004</id>
+    </mitre>
+  </rule>
+
+  <!-- 100508 / 100509: enumeration tool attribution. Low level so they
+       reach alerts.json for pivot but do not flood the dashboard. -->
+  <rule id="100508" level="6">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\winPEAS(x64|x86|any)?\.exe$</field>
+    <description>SecretCon: winPEAS executed (privesc enumeration)</description>
+    <mitre>
+      <id>T1082</id>
+      <id>T1057</id>
+    </mitre>
+  </rule>
+
+  <rule id="100509" level="6">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\SharpUp\.exe$</field>
+    <description>SecretCon: SharpUp executed (privesc enumeration)</description>
+    <mitre>
+      <id>T1082</id>
+    </mitre>
+  </rule>
+
+  <!-- ============================================================
+       100510-100517: msiexec deep-dive (analyst-agent priority)
+       ============================================================ -->
+
+  <!-- Broader-but-still-high-value variant of 100501 - any msiexec /quiet
+       /i invocation. The negate on parentImage was Wazuh-incompatible;
+       analysts can filter out svchost-parented hits in the timeline. -->
+  <rule id="100510" level="10">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\msiexec\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)/quiet.*\s/i\s</field>
+    <description>SecretCon: msiexec.exe /quiet /i (AIE precondition)</description>
+    <mitre>
+      <id>T1548.002</id>
+      <id>T1218.007</id>
+    </mitre>
+  </rule>
+
+  <rule id="100511" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\cmd\.exe$</field>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\msiexec\.exe$</field>
+    <description>SecretCon: cmd.exe child of msiexec.exe (deferred CustomAction - high-signal AIE / wixl probe)</description>
+    <mitre>
+      <id>T1548.002</id>
+      <id>T1059.003</id>
+    </mitre>
+  </rule>
+
+  <rule id="100512" level="13">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\msiexec\.exe$</field>
+    <field name="win.eventdata.integrityLevel" type="pcre2">^System$</field>
+    <description>SecretCon: SYSTEM-integrity child of msiexec.exe (AIE elevation receipt)</description>
+    <mitre>
+      <id>T1548.002</id>
+      <id>T1134</id>
+    </mitre>
+  </rule>
+
+  <rule id="100513" level="9">
+    <if_group>sysmon_event_11</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\msiexec\.exe$</field>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\Users\\Public\\aie-</field>
+    <description>SecretCon: msiexec.exe wrote C:\Users\Public\aie-* (flag drop)</description>
+    <mitre>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
+  <rule id="100514" level="11">
+    <if_group>sysmon_event_10</if_group>
+    <field name="win.eventdata.sourceImage" type="pcre2">(?i)\\msiexec\.exe$</field>
+    <field name="win.eventdata.targetImage" type="pcre2">(?i)\\lsass\.exe$</field>
+    <description>SecretCon: msiexec.exe opened handle to lsass.exe (deviation from baseline AIE chain - meterpreter-class payload?)</description>
+    <mitre>
+      <id>T1003.001</id>
+    </mitre>
+  </rule>
+
+  <rule id="100515" level="10">
+    <decoded_as>windows_eventchannel</decoded_as>
+    <field name="win.system.providerName" type="pcre2">^MsiInstaller$</field>
+    <field name="win.system.eventID" type="pcre2">^1042$</field>
+    <description>SecretCon: MsiInstaller rollback (EID 1042) - matches msfvenom FailInstallation pattern</description>
+    <mitre>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
+  <rule id="100516" level="11">
+    <decoded_as>windows_eventchannel</decoded_as>
+    <field name="win.system.channel" type="pcre2">(?i)Microsoft-Windows-MSI/Operational</field>
+    <match type="pcre2">Action=ExecPayload|Action=AieProbe</match>
+    <description>SecretCon: MSI/Operational CustomAction matches ExecPayload (msfvenom) or AieProbe (wixl)</description>
+    <mitre>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
+  <!-- 100517: msiexec /l*v log shows 1603 (msfvenom self-abort signature).
+       The agent.conf syslog subscription on C:\Users\Public\aie-*.log
+       routes those lines here, but they arrive with decoder={} so an
+       <if_sid>1002</if_sid> parent never matches (same gotcha as 100506).
+       Root rule scoped to the file location instead. -->
+  <rule id="100517" level="8">
+    <location type="pcre2">(?i)\\Users\\Public\\aie-.*\.log$</location>
+    <match type="pcre2">MainEngineThread is returning 1603</match>
+    <description>SecretCon: msiexec verbose log shows 1603 install abort (msfvenom self-abort pattern)</description>
+    <mitre>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
+  <!-- ============================================================
+       100520-100521: flag-access receipts (path-only, no token content)
+       ============================================================ -->
+
+  <!-- 100520: Sysmon EID 11 file create/access against the user flag.
+       Triggered by any process that touches the file; phase 05 produces
+       a clean hit via Get-Content. Analysts see WHO read WHEN, never
+       the token string. -->
+  <rule id="100520" level="8">
+    <if_group>sysmon_event_11</if_group>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\Users\\User_Joe\\Desktop\\user\.txt$</field>
+    <description>SecretCon: user.txt accessed on User_Joe desktop (flag receipt - path only)</description>
+    <mitre>
+      <id>T1005</id>
+    </mitre>
+  </rule>
+
+  <!-- 100521: Sysmon EID 1 commandLine referencing the root-flag drop
+       paths (root.txt or the aie-flag.txt landing pad). Composite
+       privesc proof that complements 100502 (cmd copy) and 100512
+       (SYSTEM-integrity child). -->
+  <rule id="100521" level="9">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(\\Administrator\\Desktop\\root\.txt|\\Users\\Public\\aie-flag\.txt)</field>
+    <description>SecretCon: root.txt / aie-flag.txt referenced in process commandLine (privesc proof)</description>
+    <mitre>
+      <id>T1548.002</id>
+      <id>T1005</id>
+    </mitre>
+  </rule>
+
+  <!-- ============================================================
+       100530: velocity correlation (enum -> privesc within 15 minutes)
+       ============================================================ -->
+
+  <!-- Fires when 100510 (msiexec /quiet /i) follows a winPEAS or SharpUp
+       run within 15 minutes. Captures the canonical "enumerate then
+       elevate" pattern that distinguishes deliberate attack from
+       legitimate msiexec activity. -->
+  <rule id="100530" level="14" frequency="2" timeframe="900">
+    <if_matched_sid>100510</if_matched_sid>
+    <if_sid>100508,100509</if_sid>
+    <description>SecretCon: enumeration tool (winPEAS/SharpUp) followed by AIE msiexec within 15 minutes (chain correlation)</description>
+    <mitre>
+      <id>T1548.002</id>
+      <id>T1082</id>
+    </mitre>
+  </rule>
+
+</group>
+
+<group name="chain8,windows,">
+
+  <rule id="100600" level="10">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\w3wp\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(cmd|powershell)\.exe$</field>
+    <description>Chain8: IIS w3wp.exe spawned shell (web foothold / HRConnect candidate)</description>
+    <mitre><id>T1505.003</id></mitre>
+  </rule>
+
+  <rule id="100601" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\sqlservr\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(cmd|powershell)\.exe$</field>
+    <description>Chain8: sqlservr.exe spawned shell (xp_cmdshell / SQL link abuse)</description>
+    <mitre><id>T1505.001</id></mitre>
+  </rule>
+
+  <rule id="100602" level="8">
+    <if_sid>60103</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4769$</field>
+    <field name="win.eventdata.ticketEncryptionType" type="pcre2">0x17</field>
+    <description>Chain8: Kerberos TGS-REQ with RC4 (Kerberoasting candidate)</description>
+    <mitre><id>T1558.003</id></mitre>
+  </rule>
+
+  <rule id="100603" level="8">
+    <if_sid>60103</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4768$</field>
+    <field name="win.eventdata.preAuthType" type="pcre2">^0$</field>
+    <description>Chain8: AS-REQ without pre-authentication (AS-REP roasting candidate)</description>
+    <mitre><id>T1558.004</id></mitre>
+  </rule>
+
+  <rule id="100604" level="9">
+    <if_group>sysmon_event_11</if_group>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\SYSVOL\\</field>
+    <description>Chain8: file created under SYSVOL (GPO/script tampering candidate)</description>
+    <mitre><id>T1484.001</id></mitre>
+  </rule>
+
+  <rule id="100605" level="7">
+    <if_group>sysmon_event_12,sysmon_event_13,sysmon_event_14</if_group>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\Services\\</field>
+    <description>Chain8: registry change under Services (new/modified service)</description>
+    <mitre><id>T1543.003</id></mitre>
+  </rule>
+
+  <rule id="100606" level="10">
+    <if_sid>60009</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4104$</field>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(Invoke-Mimikatz|Rubeus|SharpHound|DCSync|Invoke-Kerberoast)</field>
+    <description>Chain8: PowerShell script block matches AD attack tooling</description>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="100607" level="7">
+    <if_sid>60009</if_sid>
+    <field name="win.system.eventID" type="pcre2">^91$</field>
+    <description>Chain8: WinRM session created (lateral movement candidate)</description>
+    <mitre><id>T1021.006</id></mitre>
+  </rule>
+
+  <rule id="100608" level="6">
+    <if_sid>60009</if_sid>
+    <field name="win.system.providerName" type="pcre2">(?i)OpenSSH</field>
+    <description>Chain8: OpenSSH Admin channel event (SSH foothold/lateral)</description>
+    <mitre><id>T1021.004</id></mitre>
+  </rule>
+
+  <rule id="100609" level="7">
+    <if_sid>60009</if_sid>
+    <field name="win.system.eventID" type="pcre2">^31001$</field>
+    <description>Chain8: SMB client Kerberos auth failure burst (cred spray / wrong ticket)</description>
+    <mitre><id>T1110</id></mitre>
+  </rule>
+
+  <!-- 100610-100620 reserved for chain-specific findings from BloodHound -->
+
+</group>
+
+<group name="chain8,windows,">
+
+  <rule id="100600" level="10">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\w3wp\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(cmd|powershell)\.exe$</field>
+    <description>Chain8: IIS w3wp.exe spawned shell (web foothold / HRConnect candidate)</description>
+    <mitre><id>T1505.003</id></mitre>
+  </rule>
+
+  <rule id="100601" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\sqlservr\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(cmd|powershell)\.exe$</field>
+    <description>Chain8: sqlservr.exe spawned shell (xp_cmdshell / SQL link abuse)</description>
+    <mitre><id>T1505.001</id></mitre>
+  </rule>
+
+  <rule id="100602" level="8">
+    <if_sid>60103</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4769$</field>
+    <field name="win.eventdata.ticketEncryptionType" type="pcre2">0x17</field>
+    <description>Chain8: Kerberos TGS-REQ with RC4 (Kerberoasting candidate)</description>
+    <mitre><id>T1558.003</id></mitre>
+  </rule>
+
+  <rule id="100603" level="8">
+    <if_sid>60103</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4768$</field>
+    <field name="win.eventdata.preAuthType" type="pcre2">^0$</field>
+    <description>Chain8: AS-REQ without pre-authentication (AS-REP roasting candidate)</description>
+    <mitre><id>T1558.004</id></mitre>
+  </rule>
+
+  <rule id="100604" level="9">
+    <if_group>sysmon_event_11</if_group>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\SYSVOL\\</field>
+    <description>Chain8: file created under SYSVOL (GPO/script tampering candidate)</description>
+    <mitre><id>T1484.001</id></mitre>
+  </rule>
+
+  <rule id="100605" level="7">
+    <if_group>sysmon_event_12,sysmon_event_13,sysmon_event_14</if_group>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\Services\\</field>
+    <description>Chain8: registry change under Services (new/modified service)</description>
+    <mitre><id>T1543.003</id></mitre>
+  </rule>
+
+  <rule id="100606" level="10">
+    <if_sid>60009</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4104$</field>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(Invoke-Mimikatz|Rubeus|SharpHound|DCSync|Invoke-Kerberoast)</field>
+    <description>Chain8: PowerShell script block matches AD attack tooling</description>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="100607" level="7">
+    <if_sid>60009</if_sid>
+    <field name="win.system.eventID" type="pcre2">^91$</field>
+    <description>Chain8: WinRM session created (lateral movement candidate)</description>
+    <mitre><id>T1021.006</id></mitre>
+  </rule>
+
+  <rule id="100608" level="6">
+    <if_sid>60009</if_sid>
+    <field name="win.system.providerName" type="pcre2">(?i)OpenSSH</field>
+    <description>Chain8: OpenSSH Admin channel event (SSH foothold/lateral)</description>
+    <mitre><id>T1021.004</id></mitre>
+  </rule>
+
+  <rule id="100609" level="7">
+    <if_sid>60009</if_sid>
+    <field name="win.system.eventID" type="pcre2">^31001$</field>
+    <description>Chain8: SMB client Kerberos auth failure burst (cred spray / wrong ticket)</description>
+    <mitre><id>T1110</id></mitre>
+  </rule>
+
+  <!-- 100610-100620 reserved for chain-specific findings from BloodHound -->
+
+</group>

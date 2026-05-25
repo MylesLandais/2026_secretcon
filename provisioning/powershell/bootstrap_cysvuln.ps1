@@ -164,6 +164,43 @@ if ($stagedOption) {
 } else {
     Write-Warning "option.ini not found on PROVISION media; vfolder.ghp may not work"
 }
+
+# SecretCon: enable EFS HTTP access logging at the source so Phase 04 of the
+# walkthrough produces analyst-visible application-layer telemetry. The
+# Wazuh agent group `ews` already subscribes to
+# C:\EFS Software\Easy File Sharing Web Server\log\*.txt
+# (see infrastructure/wazuh-docker/config/wazuh_cluster/shared/ews/agent.conf
+# and detection rule 100506 in local_rules.xml). Without flipping Savelog=1
+# here, the daily YYYYMMDD.txt log file is created but stays 0 bytes - which
+# is exactly what we observed in the first baseline tour: 10-alert noise
+# floor for Phase 04 because only the post-exploitation Sysmon EID 1 fires,
+# never the actual HTTP request that triggered EDB-42256.
+$efsOption = Join-Path $efsRoot "option.ini"
+if (Test-Path $efsOption) {
+    try {
+        Set-ItemProperty -Path $efsOption -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+        $efsCfg = Get-Content $efsOption -Raw
+        if ($efsCfg -match '(?m)^Savelog=0\s*$') {
+            $efsCfg = $efsCfg -replace '(?m)^Savelog=0\s*$', 'Savelog=1'
+            Set-Content -Path $efsOption -Value $efsCfg -NoNewline -Encoding ASCII
+            Write-Host "[*] Flipped Savelog=0 -> Savelog=1 in option.ini for Wazuh ingest"
+        } elseif ($efsCfg -match '(?m)^Savelog=1\s*$') {
+            Write-Host "[*] option.ini already has Savelog=1"
+        } elseif ($efsCfg -match '(?m)^\[Server\]') {
+            $efsCfg = $efsCfg -replace '(?m)^\[Server\]', "[Server]`r`nSavelog=1"
+            Set-Content -Path $efsOption -Value $efsCfg -NoNewline -Encoding ASCII
+            Write-Host "[*] Injected Savelog=1 under [Server] in option.ini"
+        } else {
+            Add-Content -Path $efsOption -Value "`r`n[Server]`r`nSavelog=1`r`n"
+            Write-Host "[*] Appended [Server]/Savelog=1 to option.ini"
+        }
+    } catch {
+        Write-Warning "Could not enable EFS HTTP access logging: $($_.Exception.Message)"
+    }
+}
+# log\ already exists with BUILTIN\Users (RX + AppendData + CreateFiles) so
+# the User_Joe-owned fsws.exe can write the daily file without an icacls grant.
+
 $vfoldersPath = "C:\vfolders"
 New-Item -ItemType Directory -Path $vfoldersPath -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $vfoldersPath "disk_d") -Force | Out-Null
@@ -270,6 +307,32 @@ Write-Host "[*] Seeded Notes.txt to $notesPath"
 # EFS installer on Joe's desktop (reproducibility artifact).
 Copy-Item -Path $installerPath -Destination (Join-Path $joeDesktopDir $installerName) -Force
 Write-Host "[*] Seeded EFS installer to Joe desktop"
+
+# Persist Sysinternals PsExec.exe under C:\Users\Public so the AIE chain
+# validator (scripts/validate/run_aie_as_joe_interactive.py) finds it at a
+# stable path even after a snapshot revert that pre-dates the local-prep
+# step. The prep step still re-stages from a local cache for offline
+# rebuilds, but baking the binary in means the chain works on a fresh
+# Packer image without any out-of-band download. Source: the PROVISION ISO
+# (added by scripts/cysvuln-local-prep.sh) or the in-tree
+# /provisioning/cysvuln cache; bootstrap downloads as last resort.
+$psexecTarget = "C:\Users\Public\PsExec.exe"
+if (-not (Test-Path $psexecTarget)) {
+    $stagedPsExec = Find-ProvisionFile -Name "PsExec.exe" -ErrorAction SilentlyContinue
+    try {
+        if ($stagedPsExec) {
+            Copy-Item -Path $stagedPsExec -Destination $psexecTarget -Force
+            Write-Host "[*] Staged PsExec.exe from PROVISION media -> $psexecTarget"
+        } else {
+            Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec.exe" `
+                              -OutFile $psexecTarget -UseBasicParsing -ErrorAction Stop
+            Write-Host "[*] Downloaded PsExec.exe -> $psexecTarget"
+        }
+        & icacls $psexecTarget /grant "User_Joe:RX" "Administrators:F" "SYSTEM:F" | Out-Null
+    } catch {
+        Write-Warning "Could not persist PsExec.exe at bootstrap time ($($_.Exception.Message)); local-prep will re-stage it."
+    }
+}
 
 # Defender must be fully neutered: msfvenom payloads are detected on contact.
 # Disable real-time for the current session + registry GPO for reboot persistence.
