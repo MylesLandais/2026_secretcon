@@ -4,6 +4,7 @@
 #   nix develop .#kali      — adds nmap/msfvenom/evil-winrm/exploitdb (see kali.nix)
 #   nix build .#win10-ews-local   — QEMU Win10 EWS qcow2
 #   nix build .#cysvuln-local     — QEMU CysVuln qcow2 (needs staged Server 2016 ISO)
+#   nix build .#asrep-local       — QEMU ASREP demo DC qcow2 (same Server 2016 ISO)
 #   nix build .#win10-ews-proxmox — Proxmox EWS (live PROXMOX_* creds)
 #   nix build .#wazuh-siem-proxmox — Proxmox Wazuh SIEM bake
 {
@@ -44,7 +45,14 @@
           python3Packages.pytest
           python3Packages.jinja2
           python3Packages.keystone-engine
+          python3Packages.scapy
+          python3Packages.cryptography
           freerdp
+          tcpdump
+          wireshark-cli
+          thc-hydra
+          tigervnc
+          sshpass
         ];
       in
       {
@@ -154,6 +162,65 @@
           installPhase = ''
             mkdir -p $out
             cp -r packer-output/cysvuln-local/*.qcow2 $out/
+          '';
+        };
+
+        # QEMU: ASREP demo DC (Server 2016 forest secretcon.local; same ISO as cysvuln)
+        packages.asrep-local = let
+          isoStore = builtins.getEnv "ASREP_ISO_STORE";
+          isoEnv = builtins.getEnv "ASREP_ISO";
+          isoFallbackStore = builtins.getEnv "CYSVULN_ISO_STORE";
+          isoFallbackEnv = builtins.getEnv "CYSVULN_ISO";
+          isoInput = if isoStore != "" then isoStore
+            else if isoEnv != "" then isoEnv
+            else if isoFallbackStore != "" then isoFallbackStore
+            else if isoFallbackEnv != "" then isoFallbackEnv
+            else null;
+          isoFile = if isoInput == null then null else pkgs.runCommand "asrep-server-2016-iso" { } ''
+            mkdir -p $out
+            cp ${isoInput} $out/asrep-server-2016.iso
+          '';
+        in if isoFile == null then pkgs.runCommand "asrep-local-no-iso" { } ''
+          echo "[!] Set ASREP_ISO_STORE, ASREP_ISO, CYSVULN_ISO_STORE, or CYSVULN_ISO before building."
+          exit 1
+        '' else pkgs.stdenv.mkDerivation {
+          name = "asrep-local";
+          src = ./.;
+          nativeBuildInputs = [ pkgs.packer pkgs.qemu ];
+
+          patchPhase = ''
+            mkdir -p infrastructure/packer/iso
+            cp ${isoFile}/asrep-server-2016.iso infrastructure/packer/iso/cysvuln-server-2016.iso
+          '';
+
+          buildPhase = ''
+            ISO="$src/infrastructure/packer/iso/cysvuln-server-2016.iso"
+            if [ ! -f "$ISO" ]; then
+              echo "[!] Missing $ISO"
+              echo "    Run: ./scripts/stage-cysvuln-iso.sh /path/to/server-2016.iso"
+              exit 1
+            fi
+            export HOME=$(mktemp -d)
+            export PACKER_LOG=1
+            export AD_SAFEMODE_PASSWORD="''${AD_SAFEMODE_PASSWORD:-PizzaMan123!}"
+            export SECRETCON_ASREP_USER="''${SECRETCON_ASREP_USER:-enite}"
+            export SECRETCON_ASREP_PASSWORD="''${SECRETCON_ASREP_PASSWORD:-stud87}"
+            export SECRETCON_ASREP_FLAG="''${SECRETCON_ASREP_FLAG:-asrep-flag-placeholder}"
+            cd infrastructure/packer/asrep
+            rm -rf packer-output/asrep-local
+            packer init .
+            packer build -only=asrep-local.qemu.asrep-local \
+              -var "asrep_iso_url=file://$ISO" \
+              -var "ad_safemode_password=$AD_SAFEMODE_PASSWORD" \
+              -var "asrep_user=$SECRETCON_ASREP_USER" \
+              -var "asrep_password=$SECRETCON_ASREP_PASSWORD" \
+              -var "asrep_flag=$SECRETCON_ASREP_FLAG" \
+              .
+          '';
+
+          installPhase = ''
+            mkdir -p $out
+            cp -r packer-output/asrep-local/*.qcow2 $out/
           '';
         };
 

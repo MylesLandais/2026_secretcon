@@ -7,5 +7,8 @@
     metasploit
     evil-winrm
     exploitdb
+    python3Packages.impacket
+    hashcat
+    wordlists
   ];
 }

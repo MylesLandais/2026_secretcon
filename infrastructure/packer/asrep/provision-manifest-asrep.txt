@@ -1,0 +1,4 @@
+# ASREP demo DC PROVISION ISO manifest (paths relative to repo root).
+
+provisioning/asrep/autounattend.xml
+provisioning/asrep/asrep-bootstrap-runtime.ps1

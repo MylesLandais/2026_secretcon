@@ -4,7 +4,7 @@ set -euo pipefail
 # Bring up the SecretCon local-lab Wazuh single-node stack.
 # Idempotent: pre-flights cert generation, brings stack up, waits for
 # manager API + indexer green, creates the ews agent group, restarts the
-# manager so shared/ews/agent.conf is picked up.
+# manager so shared/ews/agent.conf and shared/asrep/agent.conf are picked up.
 #
 # Usage:
 #   ./scripts/wazuh-docker-up.sh
@@ -77,6 +77,15 @@ docker cp "${STACK_DIR}/config/wazuh_cluster/shared/ews/agent.conf" \
     "${WAZUH_MANAGER_CONTAINER}:/var/ossec/etc/shared/ews/agent.conf"
 docker exec "${WAZUH_MANAGER_CONTAINER}" chown -R wazuh:wazuh /var/ossec/etc/shared/ews
 
+echo "[*] Pre-creating asrep agent group (idempotent)"
+docker exec "${WAZUH_MANAGER_CONTAINER}" /var/ossec/bin/agent_groups -a -g asrep -q 2>/dev/null || true
+
+echo "[*] Syncing shared/asrep/agent.conf into the manager container"
+docker exec "${WAZUH_MANAGER_CONTAINER}" mkdir -p /var/ossec/etc/shared/asrep
+docker cp "${STACK_DIR}/config/wazuh_cluster/shared/asrep/agent.conf" \
+    "${WAZUH_MANAGER_CONTAINER}:/var/ossec/etc/shared/asrep/agent.conf"
+docker exec "${WAZUH_MANAGER_CONTAINER}" chown -R wazuh:wazuh /var/ossec/etc/shared/asrep
+
 # Same staging-path problem applies to the manager's ossec.conf and to
 # the custom rule file: the bind mount lands them under
 # /wazuh-config-mount, which is only consumed by the entrypoint on first
@@ -97,4 +106,5 @@ docker exec "${WAZUH_MANAGER_CONTAINER}" /var/ossec/bin/wazuh-control restart >/
 echo "[+] Wazuh local-lab stack ready"
 echo "    Dashboard: https://127.0.0.1:${WAZUH_DASHBOARD_PORT}  (admin / ${WAZUH_INDEXER_PASSWORD})"
 echo "    API:       https://${WAZUH_API_HOST}:${WAZUH_API_PORT}  (${WAZUH_API_USER} / ${WAZUH_API_PASSWORD})"
-echo "    Agent on guest dials: 10.0.2.2:1514 (events), 10.0.2.2:1515 (enrollment)"
+echo "    Agent on guest dials: 10.0.3.2:1514 (events), 10.0.3.2:1515 (enrollment) for ASREP QEMU user-net"
+echo "    (CysVuln local QEMU still uses 10.0.2.2 on 10.0.2.0/24)"
