@@ -12,11 +12,20 @@ set -uo pipefail
 # Requires: nmap, hydra, sshpass (or an SSH key for patrick), awk.
 
 TARGET="${1:-}"
+CHAIN_MODE=0
+if [ "${1:-}" = "--chain" ]; then
+    CHAIN_MODE=1
+    TARGET="${2:-}"
+fi
 if [ -z "$TARGET" ]; then
-    echo "usage: $0 <target-ip> [patrick-password]"
+    echo "usage: $0 [--chain] <target-ip> [patrick-password]"
     exit 2
 fi
-PATRICK_PW="${2:-Changeme123!}"
+if [ "$CHAIN_MODE" -eq 1 ]; then
+    PATRICK_PW="${3:-Changeme123!}"
+else
+    PATRICK_PW="${2:-Changeme123!}"
+fi
 VNC_PW="${VNC_PW:-FELDTECH_VNC}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -114,5 +123,37 @@ fi
 # shellcheck source=lib/check-wazuh-agent.sh
 . "${SCRIPT_DIR}/lib/check-wazuh-agent.sh"
 check_wazuh_agent "$TARGET"
+
+if [ "$CHAIN_MODE" -eq 1 ]; then
+    CHAIN_DC_IP="${CHAIN_DC_IP:-192.168.61.52}"
+    CHAIN_DOMAIN="${CHAIN_DOMAIN:-secretcon.local}"
+    SHARED_ADMIN_PW="${SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD:-PizzaMan123!}"
+    if ping -c1 -W2 "$CHAIN_DC_IP" >/dev/null 2>&1; then
+        check "chain-dc-ping" PASS "$CHAIN_DC_IP"
+    else
+        check "chain-dc-ping" FAIL "$CHAIN_DC_IP unreachable"
+    fi
+    if python3 -c "import winrm" 2>/dev/null && nc -z -w2 "$TARGET" 5985 2>/dev/null; then
+        ADMIN_OK=$(python3 - "$TARGET" "$SHARED_ADMIN_PW" <<'PY'
+import sys, winrm
+host, pw = sys.argv[1:3]
+s = winrm.Session(f"http://{host}:5985/wsman", auth=("Administrator", pw), transport="ntlm")
+r = s.run_ps("(Get-LocalUser Administrator).Enabled")
+print("1" if r.status_code == 0 and "True" in r.std_out.decode(errors="replace") else "0")
+PY
+)
+        [ "$ADMIN_OK" = "1" ] && check "chain-shared-admin-winrm" PASS "Administrator logon" \
+            || check "chain-shared-admin-winrm" FAIL "shared local admin password rejected"
+    else
+        check "chain-shared-admin-winrm" PASS "skipped (WinRM unavailable)"
+    fi
+    if command -v dig >/dev/null 2>&1; then
+        if dig +time=2 +tries=1 "@${CHAIN_DC_IP}" "${CHAIN_DOMAIN}" SOA +short 2>/dev/null | grep -q .; then
+            check "chain-dns-soa" PASS "${CHAIN_DOMAIN} @ ${CHAIN_DC_IP}"
+        else
+            check "chain-dns-soa" FAIL "no SOA for ${CHAIN_DOMAIN}"
+        fi
+    fi
+fi
 
 check_summary "verify-ews results"

@@ -47,13 +47,16 @@ Single-node Proxmox VE 9.x. Node name `manage`.
 |------|-------------------------------------|------------|------------------|------|
 | 104  | kali-2025                           | vmbr1      | DHCP             | Operator test origin inside the challenge VLAN |
 | 105  | (existing Windows UEFI VM)          | varies     | varies           | Pre-existing, do not overwrite |
-| 108  | CysVulnServer                       | vmbr0      | static           | External contributor challenge |
-| 109  | secretcon-ews-vnc-unquoted-path     | vmbr0 → vmbr1 | 192.168.61.20 | Win10 LTSC challenge: VNC foothold + unquoted service path LPE |
+| 108  | CysVulnServer (legacy)              | vmbr0      | static           | External contributor challenge |
+| 119  | secretcon-cysvuln-proxmox           | vmbr1      | 192.168.61.51    | CysVuln campaign deploy (chain box 1) |
+| 112  | asrep-dc-secretcon                  | vmbr1      | 192.168.61.52    | AS-REP roast DC (`secretcon.local`, chain box 3) |
+| 109  | secretcon-ews-vnc-unquoted-path     | vmbr1      | 192.168.61.20    | Win10 EWS (chain box 2; VNC + unquoted path) |
 | 110  | wazuh-siem                          | vmbr0 + vmbr1 | 192.168.61.10 | All-in-one Wazuh manager + indexer + dashboard |
 | 9000 | jammy-cloudimg-template             | n/a        | n/a              | Ubuntu 22.04 cloud-image base template |
 
-Provisioning bridge is `vmbr0`; challenge VMs are moved to `vmbr1` after
-first successful boot.
+Integrated chain layout (all on `192.168.61.0/24`): CysVuln `.51` → PtH → EWS `.20` → AS-REP → DC `.52`. See [docs/campaign/three-box-chain.md](campaign/three-box-chain.md).
+
+Provisioning bridge is `vmbr0`; campaign deploy scripts target `vmbr1` directly.
 
 ## Build pipeline
 

@@ -102,7 +102,7 @@
       </OOBE>
       <UserAccounts>
         <AdministratorPassword>
-          <Value>PizzaMan123!</Value>
+          <Value>__SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD__</Value>
           <PlainText>true</PlainText>
         </AdministratorPassword>
         <LocalAccounts>
@@ -120,7 +120,7 @@
       <AutoLogon>
         <Username>Administrator</Username>
         <Password>
-          <Value>PizzaMan123!</Value>
+          <Value>__SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD__</Value>
           <PlainText>true</PlainText>
         </Password>
         <Enabled>true</Enabled>

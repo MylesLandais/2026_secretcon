@@ -9,6 +9,7 @@ set -uo pipefail
 #
 # Usage:
 #   ./scripts/verify-cysvuln.sh <target-ip> [admin-password]
+#   ./scripts/verify-cysvuln.sh --chain <target-ip> [admin-password]
 #
 # Environment:
 #   WINRM_PORT   WinRM port (default 5985; use 15985 for run-local-cysvuln.sh)
@@ -20,6 +21,13 @@ TARGET="${1:-}"
 ADMIN_PW="${2:-PizzaMan123!}"
 JOE_PW="${JOE_PW:-VeryStrongPassword123!@#}"
 WINRM_PORT="${WINRM_PORT:-5985}"
+CHAIN_MODE=0
+
+if [ "${1:-}" = "--chain" ]; then
+    CHAIN_MODE=1
+    TARGET="${2:-}"
+    ADMIN_PW="${3:-${SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD:-PizzaMan123!}}"
+fi
 
 if [ -z "$TARGET" ]; then
     echo "usage: $0 <target-ip> [admin-password]"
@@ -83,5 +91,24 @@ FSWS=$(winrm_admin "(Get-Service fswsService -EA SilentlyContinue).Status" | tr 
 # shellcheck source=lib/check-wazuh-agent.sh
 . "${SCRIPT_DIR}/lib/check-wazuh-agent.sh"
 check_wazuh_agent "$TARGET"
+
+if [ "$CHAIN_MODE" -eq 1 ]; then
+    CHAIN_DC_IP="${CHAIN_DC_IP:-192.168.61.52}"
+    CHAIN_DOMAIN="${CHAIN_DOMAIN:-secretcon.local}"
+    if ping -c1 -W2 "$CHAIN_DC_IP" >/dev/null 2>&1; then
+        check "chain-dc-ping" PASS "$CHAIN_DC_IP"
+    else
+        check "chain-dc-ping" FAIL "$CHAIN_DC_IP unreachable"
+    fi
+    if command -v dig >/dev/null 2>&1; then
+        if dig +time=2 +tries=1 "@${CHAIN_DC_IP}" "${CHAIN_DOMAIN}" SOA +short 2>/dev/null | grep -q .; then
+            check "chain-dns-soa" PASS "${CHAIN_DOMAIN} @ ${CHAIN_DC_IP}"
+        else
+            check "chain-dns-soa" FAIL "no SOA for ${CHAIN_DOMAIN} via ${CHAIN_DC_IP}"
+        fi
+    else
+        check "chain-dns-soa" PASS "skipped (dig not installed)"
+    fi
+fi
 
 check_summary "verify-cysvuln results"

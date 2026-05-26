@@ -81,6 +81,35 @@ Build path (pick one — all four covered by [docs/runbooks/deploy-cysvuln-multi
 
 Validate after boot: `./scripts/verify-cysvuln.sh <target-ip>`. The SIEM capture loops (`scripts/observability-loop.sh`, `scripts/observability/*`) are QEMU-only; on other hypervisors run the validation chain manually — see the runbook's "Snapshot lifecycle and observability scope" section.
 
+### ASREP demo DC (Server 2016 + secretcon.local)
+
+Standalone AS-REP roasting box (`enite` / `stud87`). Reuses the CysVuln Server 2016 ISO.
+
+```
+./scripts/stage-cysvuln-iso.sh /path/to/server-2016.iso
+export SECRETCON_ASREP_FLAG='flag{asrep-local-test}'
+./scripts/build-asrep-local.sh
+./scripts/run-local-asrep.sh
+ASREP_DC_IP=10.0.2.15 ./scripts/validate-asrep.sh
+```
+
+Docs: [docs/asrep/readme.md](docs/asrep/readme.md), [docs/asrep/walkthrough.md](docs/asrep/walkthrough.md).
+
+### Full chain campaign (CysVuln → EWS → secretcon.local DC)
+
+Three-box Proxmox campaign on `vmbr1` with shared local Administrator password, AS-REP domain compromise, and cross-box Wazuh rules `100710`–`100715`.
+
+```
+export SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD='PizzaMan123!'
+export SECRETCON_DC_USER_FLAG='...' SECRETCON_DC_ROOT_FLAG='...'
+./scripts/proxmox/deploy-asrep.sh --vmid 112 --ip 192.168.61.52
+./scripts/proxmox/deploy-cysvuln.sh --vmid 119 --ip 192.168.61.51
+./scripts/proxmox/configure-chain-dns.sh
+./scripts/validate-three-box-chain.sh
+```
+
+Runbook: [docs/campaign/three-box-chain.md](docs/campaign/three-box-chain.md). Blue scoring: [docs/campaign/defend-track-rubric.md](docs/campaign/defend-track-rubric.md).
+
 ### EWS challenge (Win10 LTSC)
 
 ```

@@ -28,6 +28,12 @@ Set-ItemProperty `
 Install-SecretConSysmon
 Install-SecretConWazuhAgent -Manager (Get-SecretConEnvDefault -Name "WAZUH_MANAGER" -Default "192.168.61.10") -Group "ews"
 
+# Campaign misconfig: shared local Administrator password with CysVulnServer (PtH pivot).
+$sharedAdmin = Get-SecretConEnvDefault -Name "SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD" -Default "PizzaMan123!"
+$sharedSec = ConvertTo-SecureString $sharedAdmin -AsPlainText -Force
+Set-LocalUser -Name "Administrator" -Password $sharedSec -ErrorAction SilentlyContinue
+Write-Host "[*] Local Administrator password aligned with SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD"
+
 # CTF user: patrick (low-priv)
 $pw = ConvertTo-SecureString "Changeme123!" -AsPlainText -Force
 New-LocalUser -Name "patrick" -Password $pw -FullName "Patrick" -Description "EWS Operator"
@@ -88,6 +94,33 @@ Start-Service tvnserver
 # VNC list (~40 entries) does not hit the 5-attempt default lockout mid-run.
 Set-ItemProperty -Path "HKLM:\SOFTWARE\TightVNC\Server" -Name "BlacklistThreshold" -Value 100 -Type DWord
 Set-ItemProperty -Path "HKLM:\SOFTWARE\TightVNC\Server" -Name "BlacklistTimeout"   -Value 0   -Type DWord
+
+# Enable Windows registry auditing so reads of the TightVNC password key
+# generate Security EID 4663 (Object Access). Pair with the SACL applied
+# below; Wazuh rule 100805 consumes these events.
+& auditpol.exe /set /subcategory:"Registry" /success:enable /failure:enable | Out-Null
+
+# Apply a SACL on HKLM\SOFTWARE\TightVNC\Server for Everyone covering
+# QueryValues + EnumerateSubKeys + ReadKey. This is what makes a `reg query`
+# (or the planted adversary-emulation PowerShell read) generate EID 4663.
+# Get-Acl -Audit / Set-Acl handles SeSecurityPrivilege for the running
+# Administrator session; idempotent on re-runs.
+try {
+    $vncRegPath = "HKLM:\SOFTWARE\TightVNC\Server"
+    $vncAcl = Get-Acl -Path $vncRegPath -Audit
+    $vncRights = [System.Security.AccessControl.RegistryRights]"QueryValues, EnumerateSubKeys, ReadKey"
+    $vncAuditRule = New-Object System.Security.AccessControl.RegistryAuditRule(
+        "Everyone",
+        $vncRights,
+        [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+        [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AuditFlags]"Success, Failure"
+    )
+    $vncAcl.AddAuditRule($vncAuditRule)
+    Set-Acl -Path $vncRegPath -AclObject $vncAcl
+} catch {
+    Write-Host "[!] TightVNC SACL not applied: $($_.Exception.Message)"
+}
 Restart-Service tvnserver
 
 # User flag artifact. A logon task avoids pre-creating Patrick's profile path.

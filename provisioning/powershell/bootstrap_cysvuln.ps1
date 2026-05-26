@@ -37,8 +37,73 @@ Install-SecretConSysmon
 $wazuhOptional = ($env:WAZUH_ENROLLMENT_OPTIONAL -eq "1")
 Install-SecretConWazuhAgent `
     -Manager (Get-SecretConEnvDefault -Name "WAZUH_MANAGER" -Default "192.168.61.10") `
-    -Group "ews" `
+    -Group "cysvuln" `
     -EnrollmentOptional:$wazuhOptional
+
+# Campaign misconfig: shared local Administrator password with EWS (PtH pivot).
+$sharedAdmin = Get-SecretConEnvDefault -Name "SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD" -Default "PizzaMan123!"
+$sharedSec = ConvertTo-SecureString $sharedAdmin -AsPlainText -Force
+Set-LocalUser -Name "Administrator" -Password $sharedSec -ErrorAction SilentlyContinue
+Write-Host "[*] Local Administrator password aligned with SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD"
+
+# Silence the Server Manager auto-launch + "Get updates" overlay for every
+# present and future user profile. The Proxmox autounattend already
+# applies these at HKLM (machine-policy scope) during the specialize
+# pass; this block extends the same suppression into the Default User
+# hive (so newly-created accounts inherit) and the Administrator hive
+# (so the first interactive Admin logon doesn't pop the prompts). The
+# User_Joe hive is handled together with the AlwaysInstallElevated seed
+# a few blocks down so we don't double-mount NTUSER.DAT.
+function Set-SecretConHivePrompts {
+    param([Parameter(Mandatory)][string]$HivePath, [Parameter(Mandatory)][string]$MountName)
+    if (-not (Test-Path $HivePath)) {
+        Write-Warning "Hive not present, skipping prompt-suppression: $HivePath"
+        return
+    }
+    # Use reg.exe directly instead of HKU: PSDrive (which isn't
+    # auto-mounted in Server 2016 PowerShell and trips New-Item with
+    # DriveNotFoundException -- the regression that ate User_Joe's
+    # AlwaysInstallElevated seed on the first 118 build).
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & reg.exe load "HKU\$MountName" $HivePath 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "reg load failed for $HivePath (exit $LASTEXITCODE)"
+            return
+        }
+        & reg.exe add "HKU\$MountName\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f | Out-Null
+        & reg.exe add "HKU\$MountName\SOFTWARE\Microsoft\ServerManager\Roles" /v RefreshFrequency /t REG_SZ /d "00:00:00" /f | Out-Null
+        & reg.exe add "HKU\$MountName\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v DisableNotificationCenter /t REG_DWORD /d 1 /f | Out-Null
+    } catch {
+        Write-Warning "prompt-suppression failed for $HivePath : $($_.Exception.Message)"
+    } finally {
+        [gc]::Collect()
+        Start-Sleep -Seconds 1
+        & reg.exe unload "HKU\$MountName" 2>&1 | Out-Null
+        $ErrorActionPreference = $prev
+    }
+}
+
+# Default User hive: every new account that logs on after bootstrap
+# inherits these keys. NTUSER.DAT under C:\Users\Default is the
+# template Windows copies on profile creation.
+Set-SecretConHivePrompts -HivePath "C:\Users\Default\NTUSER.DAT" -MountName "SecretConDefault"
+
+# Administrator hive: only exists if Administrator has logged in once.
+# Autounattend's FirstLogonCommands run as 'packer', so this hive is
+# usually absent on a fresh box; treat as best-effort.
+$adminHive = "C:\Users\Administrator\NTUSER.DAT"
+if (Test-Path $adminHive) {
+    Set-SecretConHivePrompts -HivePath $adminHive -MountName "SecretConAdmin"
+}
+
+# Belt-and-suspenders: kill the Windows Update + Update-Orchestrator
+# services so MoUsoCoreWorker.exe never resurrects the overlay.
+foreach ($svc in @("wuauserv","UsoSvc","WaaSMedicSvc")) {
+    Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+    Set-Service  -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+}
 
 # Low-priv user: matches Cy's documented Notes.txt account
 $pwSecure = ConvertTo-SecureString $joePw -AsPlainText -Force
@@ -72,9 +137,14 @@ if (Test-Path $joeHive) {
         & icacls $tempHive /grant "Administrators:(F)" /grant "SYSTEM:(F)" | Out-Null
         & reg.exe load "HKU\$seedKey" $tempHive 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "reg load failed (exit $LASTEXITCODE)" }
-        New-Item -Path "HKU:\$seedKey\SOFTWARE\Policies\Microsoft\Windows\Installer" -Force | Out-Null
-        Set-ItemProperty -Path "HKU:\$seedKey\SOFTWARE\Policies\Microsoft\Windows\Installer" `
-                         -Name "AlwaysInstallElevated" -Value 1 -Type DWord
+        # reg.exe instead of HKU: PSDrive (PSDrive isn't auto-mounted
+        # in Server 2016 PowerShell; using it threw DriveNotFound and
+        # skipped the AIE seed silently on the first 118 deploy).
+        & reg.exe add "HKU\$seedKey\SOFTWARE\Policies\Microsoft\Windows\Installer" /v AlwaysInstallElevated /t REG_DWORD /d 1 /f | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "AIE reg add failed (exit $LASTEXITCODE)" }
+        # Server Manager + Update silencers in the same mount window.
+        & reg.exe add "HKU\$seedKey\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f | Out-Null
+        & reg.exe add "HKU\$seedKey\SOFTWARE\Microsoft\ServerManager\Roles" /v RefreshFrequency /t REG_SZ /d "00:00:00" /f | Out-Null
         [gc]::Collect()
         Start-Sleep -Seconds 1
         & reg.exe unload "HKU\$seedKey" 2>&1 | Out-Null

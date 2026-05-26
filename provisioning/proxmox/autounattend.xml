@@ -43,9 +43,13 @@
       <ImageInstall>
         <OSImage>
           <InstallFrom>
+            <!-- INDEX=1 on the Server 2016 Eval ISO is SERVERSTANDARDCORE
+                 (Server Core, no desktop) which is what produced the
+                 bare-cmd box on VMID 119. Pick the Desktop Experience
+                 SKU by name to match the live reference VMID 108. -->
             <MetaData wcm:action="add">
-              <Key>/IMAGE/INDEX</Key>
-              <Value>1</Value>
+              <Key>/IMAGE/NAME</Key>
+              <Value>Windows Server 2016 SERVERSTANDARD</Value>
             </MetaData>
           </InstallFrom>
           <InstallTo>
@@ -84,6 +88,21 @@
           <Path>cmd /c for %i in (D E F G H I J K) do @if exist %i:\setstatic.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File %i:\setstatic.ps1</Path>
           <Description>Set static Proxmox build IPv4 address before OOBE</Description>
         </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>cmd /c reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" /v NoAutoUpdate /t REG_DWORD /d 1 /f</Path>
+          <Description>Disable Windows Update auto-check (kill the Get-updates overlay)</Description>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>cmd /c reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" /v DoNotConnectToWindowsUpdateInternetLocations /t REG_DWORD /d 1 /f</Path>
+          <Description>Block WU online location lookups</Description>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Path>cmd /c reg add "HKLM\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f</Path>
+          <Description>Suppress Server Manager auto-launch (machine scope)</Description>
+        </RunSynchronousCommand>
       </RunSynchronous>
     </component>
     <component name="Microsoft-Windows-LUA-Settings" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
@@ -110,7 +129,7 @@
       </OOBE>
       <UserAccounts>
         <AdministratorPassword>
-          <Value>packer</Value>
+          <Value>__SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD__</Value>
           <PlainText>true</PlainText>
         </AdministratorPassword>
         <LocalAccounts>
@@ -140,7 +159,7 @@
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
           <Order>2</Order>
-          <CommandLine>cmd /c net user Administrator packer</CommandLine>
+          <CommandLine>cmd /c net user Administrator __SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD__</CommandLine>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
           <Order>3</Order>
@@ -153,6 +172,21 @@
         <SynchronousCommand wcm:action="add">
           <Order>5</Order>
           <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -File F:\setup-openssh.ps1</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>6</Order>
+          <CommandLine>cmd /c reg add "HKCU\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f</CommandLine>
+          <Description>Suppress Server Manager auto-launch for packer (user scope)</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>7</Order>
+          <CommandLine>cmd /c reg add "HKCU\SOFTWARE\Microsoft\ServerManager\Roles" /v RefreshFrequency /t REG_SZ /d "00:00:00" /f</CommandLine>
+          <Description>Stop Server Manager from polling refresh data</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>8</Order>
+          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Set-Service wuauserv -StartupType Disabled -ErrorAction SilentlyContinue"</CommandLine>
+          <Description>Disable wuauserv so MoUsoCoreWorker.exe / Get-updates overlay never opens</Description>
         </SynchronousCommand>
       </FirstLogonCommands>
     </component>

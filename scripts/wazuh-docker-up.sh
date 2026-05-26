@@ -86,6 +86,15 @@ docker cp "${STACK_DIR}/config/wazuh_cluster/shared/asrep/agent.conf" \
     "${WAZUH_MANAGER_CONTAINER}:/var/ossec/etc/shared/asrep/agent.conf"
 docker exec "${WAZUH_MANAGER_CONTAINER}" chown -R wazuh:wazuh /var/ossec/etc/shared/asrep
 
+echo "[*] Pre-creating cysvuln agent group (idempotent)"
+docker exec "${WAZUH_MANAGER_CONTAINER}" /var/ossec/bin/agent_groups -a -g cysvuln -q 2>/dev/null || true
+
+echo "[*] Syncing shared/cysvuln/agent.conf into the manager container"
+docker exec "${WAZUH_MANAGER_CONTAINER}" mkdir -p /var/ossec/etc/shared/cysvuln
+docker cp "${STACK_DIR}/config/wazuh_cluster/shared/cysvuln/agent.conf" \
+    "${WAZUH_MANAGER_CONTAINER}:/var/ossec/etc/shared/cysvuln/agent.conf"
+docker exec "${WAZUH_MANAGER_CONTAINER}" chown -R wazuh:wazuh /var/ossec/etc/shared/cysvuln
+
 # Same staging-path problem applies to the manager's ossec.conf and to
 # the custom rule file: the bind mount lands them under
 # /wazuh-config-mount, which is only consumed by the entrypoint on first

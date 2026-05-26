@@ -105,7 +105,7 @@
       </OOBE>
       <UserAccounts>
         <AdministratorPassword>
-          <Value>packer</Value>
+          <Value>__SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD__</Value>
           <PlainText>true</PlainText>
         </AdministratorPassword>
         <LocalAccounts>
@@ -135,7 +135,7 @@
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
           <Order>2</Order>
-          <CommandLine>cmd /c net user Administrator packer</CommandLine>
+          <CommandLine>cmd /c net user Administrator __SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD__</CommandLine>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
           <Order>3</Order>

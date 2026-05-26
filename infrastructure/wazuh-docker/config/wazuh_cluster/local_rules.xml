@@ -375,83 +375,238 @@
 
 </group>
 
-<group name="chain8,windows,">
+<group name="secretcon,ews,windows,">
 
-  <rule id="100600" level="10">
+  <!-- ============================================================
+       100800-100807: EWS VNC foothold and "previous adversary"
+       emulation trail.
+
+       The EWS challenge VM (VMID 109, secretcon-ews-vnc-unquoted-path)
+       ships TightVNC 2.8.87 with a planted password (FELDTECH_VNC) that
+       matches the SecLists default-VNC list. The intended kill chain is:
+
+         1. brute force VNC -> patrick desktop (user flag)
+         2. unquoted service path (SecretConEwsSync) -> SYSTEM (root flag)
+
+       These rules surface the *forensic narrative* of a previous
+       attacker who already ran that kill chain. Generated once live by
+       scripts/observability/vnc-adversary-emulation.sh (Kali-driven
+       Hydra + WinRM PowerShell exfil), exported via
+       scripts/wazuh-export-dataset.sh, and replayed on every deploy by
+       scripts/observability/vnc-replay-on-deploy.sh.
+
+       Important Sysmon caveat: Sysmon EID 13 fires on registry value
+       *writes*, not reads. To surface a registry password *read* we
+       use two complementary mechanisms:
+         - Windows Security EID 4663 via SACL + Audit Registry
+           subcategory on HKLM\SOFTWARE\TightVNC\Server (rule 100805).
+         - The adversary explicitly dumps the bytes to disk via
+           PowerShell; Sysmon EID 11 (file create) catches the write,
+           and shared/ews/agent.conf tails the file so the hex blob
+           lands in alerts.json as full_log (rule 100806).
+       ============================================================ -->
+
+  <!-- 100800: VNC connection burst. Sysmon EID 3 inbound to port 5900
+       from the same source within a tight window. Threshold 10/60s
+       catches a 40-entry SecLists run comfortably without flapping on
+       a single re-connect from the challenge participant. -->
+  <rule id="100800" level="10" frequency="10" timeframe="60">
+    <if_matched_group>sysmon_event3</if_matched_group>
+    <field name="win.eventdata.destinationPort" type="pcre2">^5900$</field>
+    <same_field>win.eventdata.sourceIp</same_field>
+    <description>SecretCon EWS: VNC connection burst to TCP/5900 (brute-force candidate)</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+  </rule>
+
+  <!-- 100801: TightVNC server log "Authentication failed" line.
+       agent.conf tails C:\Program Files\TightVNC\tvnserver.log as a
+       syslog passthrough; lines arrive with decoder={} so we root-rule
+       on <location> instead of chaining off a Wazuh sid (same gotcha
+       as 100506 EFS and 100517 msiexec verbose log). -->
+  <rule id="100801" level="8">
+    <location type="pcre2">(?i)tvnserver\.log$</location>
+    <match type="pcre2">(?i)(authentication failed|authentication has been rejected|wrong password)</match>
+    <description>SecretCon EWS: TightVNC tvnserver.log authentication failure</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+  </rule>
+
+  <!-- 100802: reg.exe query against the TightVNC password key. Sysmon
+       EID 1 captures the commandLine even though the output (the hash
+       value) lives only in stdout. Pairs with 100804/100805/100806
+       for the actual byte exfil. -->
+  <rule id="100802" level="9">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\w3wp\.exe$</field>
-    <field name="win.eventdata.image" type="pcre2">(?i)\\(cmd|powershell)\.exe$</field>
-    <description>Chain8: IIS w3wp.exe spawned shell (web foothold / HRConnect candidate)</description>
-    <mitre><id>T1505.003</id></mitre>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\reg\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(query|export).*HKLM.*TightVNC\\Server</field>
+    <description>SecretCon EWS: reg.exe query against HKLM\SOFTWARE\TightVNC\Server (credential access)</description>
+    <mitre>
+      <id>T1012</id>
+      <id>T1552.002</id>
+    </mitre>
   </rule>
 
-  <rule id="100601" level="12">
-    <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\sqlservr\.exe$</field>
-    <field name="win.eventdata.image" type="pcre2">(?i)\\(cmd|powershell)\.exe$</field>
-    <description>Chain8: sqlservr.exe spawned shell (xp_cmdshell / SQL link abuse)</description>
-    <mitre><id>T1505.001</id></mitre>
+  <!-- 100803: Sysmon EID 13 registry-value SET on the TightVNC password
+       value. Fires once during the Packer bake (msiexec writes the
+       value with VALUE_OF_PASSWORD) so it is a useful blue baseline
+       hit; should NOT fire again on a stable image unless the password
+       is rotated. Low level so it sits in alerts.json without
+       crowding higher-severity findings. -->
+  <rule id="100803" level="7">
+    <if_group>sysmon_event_13</if_group>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\SOFTWARE\\TightVNC\\Server\\Password$</field>
+    <description>SecretCon EWS: HKLM\SOFTWARE\TightVNC\Server\Password value SET (baseline at bake; rotation otherwise)</description>
+    <mitre>
+      <id>T1112</id>
+    </mitre>
   </rule>
 
-  <rule id="100602" level="8">
-    <if_sid>60103</if_sid>
-    <field name="win.system.eventID" type="pcre2">^4769$</field>
-    <field name="win.eventdata.ticketEncryptionType" type="pcre2">0x17</field>
-    <description>Chain8: Kerberos TGS-REQ with RC4 (Kerberoasting candidate)</description>
-    <mitre><id>T1558.003</id></mitre>
+  <!-- 100804: Sysmon EID 11 file create matching the planted exfil
+       receipt path. The adversary emulation runner writes the hex
+       blob here; participants can pivot from this rule to the
+       contents via rule 100806. -->
+  <rule id="100804" level="9">
+    <if_group>sysmon_event_11</if_group>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\Users\\Public\\vnc-pwd-dump</field>
+    <description>SecretCon EWS: file written under C:\Users\Public\vnc-pwd-dump* (credential dump receipt)</description>
+    <mitre>
+      <id>T1005</id>
+      <id>T1552.002</id>
+    </mitre>
   </rule>
 
-  <rule id="100603" level="8">
+  <!-- 100805: Windows Security EID 4663 Object Access on the TightVNC
+       password key. Requires SACL + Audit Registry subcategory both
+       enabled; bootstrap_win.ps1 sets these. Does NOT contain the
+       value bytes; it records who/when of the read. -->
+  <rule id="100805" level="10">
+    <decoded_as>windows_eventchannel</decoded_as>
+    <field name="win.system.providerName" type="pcre2">(?i)Microsoft-Windows-Security-Auditing</field>
+    <field name="win.system.eventID" type="pcre2">^4663$</field>
+    <field name="win.eventdata.objectName" type="pcre2">(?i)\\REGISTRY\\MACHINE\\SOFTWARE\\TightVNC\\Server</field>
+    <description>SecretCon EWS: Audit Registry object access on TightVNC\Server (credential read)</description>
+    <mitre>
+      <id>T1012</id>
+      <id>T1552.002</id>
+    </mitre>
+  </rule>
+
+  <!-- 100806: hex blob exfil receipt. Tails C:\Users\Public\vnc-pwd-dump.txt
+       per shared/ews/agent.conf and matches the canonical line written
+       by scripts/observability/vnc-adversary-emulation.sh. THE FULL
+       LOG carries the hex bytes, so an analyst recovers the credential
+       directly from alerts.json without ever touching the endpoint
+       (then runs `vncpasswd.py -d -H <hex>` for plaintext). Highest
+       severity in this pack to make sure it surfaces. -->
+  <rule id="100806" level="12">
+    <location type="pcre2">(?i)\\Users\\Public\\vnc-pwd-dump\.txt$</location>
+    <match type="pcre2">(?i)TightVNC password blob \(hex\):</match>
+    <description>SecretCon EWS: TightVNC password hex blob exfil receipt (recoverable via vncpasswd.py -d -H)</description>
+    <mitre>
+      <id>T1005</id>
+      <id>T1552.002</id>
+    </mitre>
+  </rule>
+
+  <!-- 100807: velocity correlation. Brute-force burst (100800) followed
+       within 15 minutes by a registry-access signal (reg.exe query
+       100802, audited read 100805, or the dump file write 100804).
+       This is the "previous adversary ran the full chain here" proof
+       that participants reconstruct from the SIEM. -->
+  <rule id="100807" level="14" frequency="2" timeframe="900">
+    <if_matched_sid>100800</if_matched_sid>
+    <if_sid>100802,100804,100805</if_sid>
+    <description>SecretCon EWS: VNC brute force followed by TightVNC credential access within 15 minutes (chain proof)</description>
+    <mitre>
+      <id>T1110</id>
+      <id>T1552.002</id>
+    </mitre>
+  </rule>
+
+</group>
+
+<group name="secretcon,asrep,windows,">
+
+  <rule id="100700" level="9">
     <if_sid>60103</if_sid>
     <field name="win.system.eventID" type="pcre2">^4768$</field>
     <field name="win.eventdata.preAuthType" type="pcre2">^0$</field>
-    <description>Chain8: AS-REQ without pre-authentication (AS-REP roasting candidate)</description>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^enite@</field>
+    <description>SecretCon: AS-REP roast targeting enite (no pre-auth)</description>
     <mitre><id>T1558.004</id></mitre>
   </rule>
 
-  <rule id="100604" level="9">
-    <if_group>sysmon_event_11</if_group>
-    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\SYSVOL\\</field>
-    <description>Chain8: file created under SYSVOL (GPO/script tampering candidate)</description>
-    <mitre><id>T1484.001</id></mitre>
+  <rule id="100701" level="7">
+    <if_sid>60103</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4769$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^enite@</field>
+    <field name="win.eventdata.ticketEncryptionType" type="pcre2">0x17</field>
+    <description>SecretCon: TGS-REQ for enite with RC4 (post-AS-REP usage)</description>
+    <mitre><id>T1558</id></mitre>
   </rule>
 
-  <rule id="100605" level="7">
-    <if_group>sysmon_event_12,sysmon_event_13,sysmon_event_14</if_group>
-    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\Services\\</field>
-    <description>Chain8: registry change under Services (new/modified service)</description>
-    <mitre><id>T1543.003</id></mitre>
+  <rule id="100702" level="6">
+    <if_sid>60103</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4624$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^enite$</field>
+    <description>SecretCon: enite logon (cracked credential reuse)</description>
+    <mitre><id>T1078.002</id></mitre>
   </rule>
 
-  <rule id="100606" level="10">
-    <if_sid>60009</if_sid>
-    <field name="win.system.eventID" type="pcre2">^4104$</field>
-    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(Invoke-Mimikatz|Rubeus|SharpHound|DCSync|Invoke-Kerberoast)</field>
-    <description>Chain8: PowerShell script block matches AD attack tooling</description>
-    <mitre><id>T1059.001</id></mitre>
+</group>
+
+<group name="secretcon,chain,windows,">
+
+  <rule id="100710" level="11">
+    <if_group>sysmon_event_10</if_group>
+    <field name="win.eventdata.targetImage" type="pcre2">(?i)\\lsass\.exe$</field>
+    <field name="win.eventdata.sourceImage" negate="yes" type="pcre2">(?i)\\(System|Registry|smss|csrss|wininit|services|lsass)\.exe$</field>
+    <description>SecretCon chain: non-system process opened handle to lsass.exe (credential dump candidate)</description>
+    <mitre><id>T1003.001</id></mitre>
   </rule>
 
-  <rule id="100607" level="7">
-    <if_sid>60009</if_sid>
-    <field name="win.system.eventID" type="pcre2">^91$</field>
-    <description>Chain8: WinRM session created (lateral movement candidate)</description>
-    <mitre><id>T1021.006</id></mitre>
+  <rule id="100711" level="10">
+    <if_sid>60103</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4624$</field>
+    <field name="win.eventdata.logonType" type="pcre2">^3$</field>
+    <field name="win.eventdata.authenticationPackageName" type="pcre2">(?i)NTLM</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^Administrator$</field>
+    <description>SecretCon chain: NTLM network logon (type 3) as local Administrator (PtH lateral candidate)</description>
+    <mitre><id>T1550.002</id></mitre>
   </rule>
 
-  <rule id="100608" level="6">
-    <if_sid>60009</if_sid>
-    <field name="win.system.providerName" type="pcre2">(?i)OpenSSH</field>
-    <description>Chain8: OpenSSH Admin channel event (SSH foothold/lateral)</description>
-    <mitre><id>T1021.004</id></mitre>
+  <rule id="100712" level="12" frequency="2" timeframe="1800">
+    <if_matched_sid>100510</if_matched_sid>
+    <if_sid>100710</if_sid>
+    <description>SecretCon chain: AIE msiexec followed by lsass access within 30 minutes</description>
+    <mitre><id>T1548.002</id><id>T1003.001</id></mitre>
   </rule>
 
-  <rule id="100609" level="7">
-    <if_sid>60009</if_sid>
-    <field name="win.system.eventID" type="pcre2">^31001$</field>
-    <description>Chain8: SMB client Kerberos auth failure burst (cred spray / wrong ticket)</description>
-    <mitre><id>T1110</id></mitre>
+  <rule id="100713" level="12" frequency="2" timeframe="3600">
+    <if_matched_sid>100711</if_matched_sid>
+    <if_sid>100700</if_sid>
+    <description>SecretCon chain: PtH lateral to EWS followed by AS-REP roast within 60 minutes</description>
+    <mitre><id>T1550.002</id><id>T1558.004</id></mitre>
   </rule>
 
-  <!-- 100610-100620 reserved for chain-specific findings from BloodHound -->
+  <rule id="100714" level="8">
+    <if_sid>60103</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4728$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^Domain Admins$</field>
+    <description>SecretCon chain: member added to Domain Admins (seed / privilege change)</description>
+    <mitre><id>T1098</id></mitre>
+  </rule>
+
+  <rule id="100715" level="7">
+    <if_sid>60103</if_sid>
+    <field name="win.system.eventID" type="pcre2">^4624$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^enite$</field>
+    <field name="win.eventdata.logonType" type="pcre2">^(3|10)$</field>
+    <description>SecretCon chain: enite interactive or network logon post-roast</description>
+    <mitre><id>T1078.002</id></mitre>
+  </rule>
 
 </group>

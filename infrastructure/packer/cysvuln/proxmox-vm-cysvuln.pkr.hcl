@@ -29,7 +29,7 @@ variable "build_bridge" {
 
 variable "build_ssh_host" {
   type    = string
-  default = "192.168.60.118"
+  default = "192.168.60.109"
 }
 
 variable "final_bridge" {
@@ -37,15 +37,29 @@ variable "final_bridge" {
   default = "vmbr0"
 }
 
+# Per-build static-IP descriptor consumed by provisioning/proxmox/setstatic.ps1.
+# Defaults to the in-tree file (192.168.60.109 to match the historical
+# build_ssh_host default); deploy-cysvuln.sh writes a build-scoped tempfile
+# when it needs to target a different IP without mutating the tracked default.
+variable "proxmox_static_ip_file" {
+  type    = string
+  default = ""
+}
+
 locals {
   _shared_files = [
     for p in local._shared_lines :
     "${local.repo_root}/${p}"
   ]
+  _static_ip_file = (
+    var.proxmox_static_ip_file != "" ?
+    var.proxmox_static_ip_file :
+    "${local.repo_root}/provisioning/proxmox-static-ip.txt"
+  )
   _proxmox_prefix = [
     "${local.repo_root}/provisioning/proxmox/autounattend.xml",
     "${local.repo_root}/provisioning/proxmox/setstatic.ps1",
-    "${local.repo_root}/provisioning/proxmox-static-ip.txt",
+    local._static_ip_file,
   ]
   proxmox_provision_files = concat(local._proxmox_prefix, local._shared_files)
 }

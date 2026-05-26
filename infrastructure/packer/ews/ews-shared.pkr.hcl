@@ -20,6 +20,12 @@ variable "secretcon_root_flag" {
   default = env("SECRETCON_ROOT_FLAG")
 }
 
+variable "secretcon_shared_local_admin_password" {
+  type      = string
+  default   = env("SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD")
+  sensitive = true
+}
+
 locals {
   repo_root = "${path.root}/../../.."
 
@@ -50,11 +56,13 @@ locals {
     "WAZUH_MANAGER=10.0.2.2",
     "SECRETCON_USER_FLAG=${var.secretcon_user_flag}",
     "SECRETCON_ROOT_FLAG=${var.secretcon_root_flag}",
+    "SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD=${var.secretcon_shared_local_admin_password != "" ? var.secretcon_shared_local_admin_password : "PizzaMan123!"}",
   ]
 
   proxmox_bootstrap_env = [
     "WAZUH_MANAGER=192.168.61.10",
     "SECRETCON_USER_FLAG=${var.secretcon_user_flag}",
     "SECRETCON_ROOT_FLAG=${var.secretcon_root_flag}",
+    "SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD=${var.secretcon_shared_local_admin_password != "" ? var.secretcon_shared_local_admin_password : "PizzaMan123!"}",
   ]
 }
