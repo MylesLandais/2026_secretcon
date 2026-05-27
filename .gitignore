@@ -86,9 +86,9 @@ infrastructure/wazuh-docker/data/
 # SIEM capture loop run artifacts (randomized flags, drained alerts, etc.)
 artifacts/cysvuln/observability-loop/
 
-# AD Chain 8 - WIP reproduction of third-party (Hack Academy / OSCP) OVAs.
-# Not a SecretCon-original challenge; keep off-tree until it earns its own
-# box with red FAQ + blue FAQ + infra README + skill.
+# AD Chain 8 — tracked on branch lab/ad-chain8 (see README "Experimental labs").
+# Not a SecretCon-original challenge; keep off-tree on main until it earns
+# player/defender FAQs and merges from that branch.
 docs/ad-chain8/
 docs/ad-chain8-audit-baseline.md
 docs/ad-chain8-reproduction.md
