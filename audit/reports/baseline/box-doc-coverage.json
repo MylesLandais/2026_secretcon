@@ -1,0 +1,58 @@
+{
+  "generated": "2026-05-27T13:47:57Z",
+  "cysvuln": {
+    "deployment": {
+      "present": true,
+      "files": [
+        "docs/runbooks/deploy-cysvulnserver.md",
+        "docs/runbooks/deploy-cysvuln-multi-hypervisor.md",
+        "infrastructure/packer/cysvuln/README.md",
+        "docs/cysvulnserver/readme.md"
+      ]
+    },
+    "attack_faq": {
+      "present": true,
+      "file": "docs/cysvulnserver/attack-faq-walkthrough.md"
+    },
+    "defend_faq": {
+      "present": true,
+      "file": "docs/cysvulnserver/defend-faq-walkthrough.md"
+    }
+  },
+  "ews": {
+    "deployment": {
+      "present": true,
+      "files": [
+        "docs/runbooks/deploy-windowsvm.md",
+        "infrastructure/packer/ews/README.md",
+        "docs/ews/README.md"
+      ]
+    },
+    "attack_faq": {
+      "present": true,
+      "file": "docs/ews/attack-faq-walkthrough.md"
+    },
+    "defend_faq": {
+      "present": true,
+      "file": "docs/ews/defend-faq-walkthrough.md"
+    }
+  },
+  "asrep": {
+    "deployment": {
+      "present": true,
+      "files": [
+        "docs/asrep/readme.md",
+        "docs/asrep/reports/proxmox-deploy-recon.md",
+        "infrastructure/packer/asrep/README.md"
+      ]
+    },
+    "attack_faq": {
+      "present": true,
+      "file": "docs/asrep/attack-faq-walkthrough.md"
+    },
+    "defend_faq": {
+      "present": true,
+      "file": "docs/asrep/defend-faq-walkthrough.md"
+    }
+  }
+}

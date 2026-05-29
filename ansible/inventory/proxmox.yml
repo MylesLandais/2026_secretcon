@@ -1,0 +1,33 @@
+---
+# SecretCon static inventory. Mirrors infrastructure/packer/* and the live
+# Proxmox state on cerberus-nix. When step 7 of the migration order lands,
+# this file becomes a render target of OpenTofu outputs instead of being
+# hand-maintained. Hypervisor plays use the proxmox group (localhost + group_vars/proxmox.yml).
+all:
+  children:
+    proxmox:
+      hosts:
+        localhost:
+          ansible_connection: local
+    windows:
+      children:
+        ews:
+          hosts:
+            ews-prod:
+              ansible_host: 192.168.60.109
+        cysvuln:
+          hosts:
+            cysvuln-proxmox:
+              # ansible_host: set by scripts/proxmox/discover-proxmox-inventory-cysvuln.sh
+              ansible_host: 192.168.60.57
+              proxmox_vmid: 118
+        asrep_dc:
+          hosts: {}
+    linux:
+      children:
+        wazuh_manager:
+          hosts: {}
+        arkime:
+          hosts: {}
+        opnsense:
+          hosts: {}

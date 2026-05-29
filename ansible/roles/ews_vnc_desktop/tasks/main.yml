@@ -1,0 +1,111 @@
+---
+# VNC-friendly desktop: no sleep, no lock screen, no screensaver.
+
+- name: Disable sleep and display timeout (AC and DC)
+  ansible.windows.win_command:
+    cmd: "{{ item }}"
+  loop:
+    - powercfg /change standby-timeout-ac 0
+    - powercfg /change standby-timeout-dc 0
+    - powercfg /change monitor-timeout-ac 0
+    - powercfg /change monitor-timeout-dc 0
+    - powercfg /change hibernate-timeout-ac 0
+    - powercfg /change hibernate-timeout-dc 0
+    - powercfg /change disk-timeout-ac 0
+    - powercfg /change disk-timeout-dc 0
+  changed_when: false
+  when:
+    - ews_vnc_desktop_enabled | bool
+    - not ansible_check_mode
+
+- name: Set active power scheme to High performance
+  ansible.windows.win_command: powercfg /setactive SCHEME_MIN
+  changed_when: false
+  failed_when: false
+  when:
+    - ews_vnc_desktop_enabled | bool
+    - not ansible_check_mode
+
+- name: Disable workstation lock and inactivity timeout (machine policy)
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: dword
+  loop:
+    - { name: InactivityTimeoutSecs, data: 0 }
+    - { name: DisableLockWorkstation, data: 1 }
+  when:
+    - ews_vnc_desktop_enabled | bool
+    - not ansible_check_mode
+
+- name: Disable lock screen (personalization policy)
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization
+    name: NoLockScreen
+    data: 1
+    type: dword
+  when:
+    - ews_vnc_desktop_enabled | bool
+    - not ansible_check_mode
+
+- name: Disable screensaver for default user profile
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: ScreenSaveActive
+    data: "0"
+    type: string
+  when:
+    - ews_vnc_desktop_enabled | bool
+    - not ansible_check_mode
+
+- name: Disable screensaver timeout (control panel desktop)
+  ansible.windows.win_regedit:
+    path: HKCU:\Control Panel\Desktop
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: "{{ item.type }}"
+  loop:
+    - { name: ScreenSaveActive, data: "0", type: string }
+    - { name: ScreenSaveTimeOut, data: "0", type: string }
+    - { name: SCRNSAVE.EXE, data: "", type: string }
+  when:
+    - ews_vnc_desktop_enabled | bool
+    - not ansible_check_mode
+
+- name: Disable require sign-in on wake (power console lock)
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $sub = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\{0E796BDB-100D-47D6-A2D5-F7D2DAA51F51}\{0E796BDB-100D-47D6-A2D5-F7D2DAA51F51}'
+      if (-not (Test-Path $sub)) {
+          $Ansible.Changed = $false
+          return
+      }
+      Set-ItemProperty -Path $sub -Name DCSettingIndex -Value 0 -Type DWord -Force
+      Set-ItemProperty -Path $sub -Name ACSettingIndex -Value 0 -Type DWord -Force
+      $Ansible.Changed = $true
+  when:
+    - ews_vnc_desktop_enabled | bool
+    - not ansible_check_mode
+
+- name: Apply per-user desktop keys for autologon user
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $user = '{{ ews_vnc_desktop_user_name }}'
+      $sid = (New-Object System.Security.Principal.NTAccount($user)).Translate(
+          [System.Security.Principal.SecurityIdentifier]).Value
+      $path = "Registry::HKEY_USERS\$sid\Control Panel\Desktop"
+      if (-not (Test-Path $path)) {
+          $Ansible.Failed = $true
+          $Ansible.Msg = "User hive not found for $user ($sid)"
+          return
+      }
+      Set-ItemProperty -Path $path -Name ScreenSaveActive -Value '0' -Force
+      Set-ItemProperty -Path $path -Name ScreenSaveTimeOut -Value '0' -Force
+      Set-ItemProperty -Path $path -Name SCRNSAVE.EXE -Value '' -Force
+      $Ansible.Changed = $true
+  when:
+    - ews_vnc_desktop_enabled | bool
+    - not ansible_check_mode

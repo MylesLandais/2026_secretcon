@@ -1,0 +1,12 @@
+---
+# cysvuln_efs_installer role (scaffold — migration step 5).
+# Parity: cyv-009 through cyv-018, cyv-022, cyv-023
+#
+# Port blocks: PROVISION copy, SHA assert, Inno /VERYSILENT, fswsService as
+# User_Joe, swsfe.dll ACL, option.ini + Savelog=1, vfolders, firewall,
+# Notes.txt, installer on desktop.
+
+- name: CysVuln EFS installer role not yet implemented
+  ansible.builtin.debug:
+    msg: Scaffold only — see ansible-parity-matrix.md cyv-009+
+  when: false

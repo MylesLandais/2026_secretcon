@@ -1,0 +1,81 @@
+{
+  "generated": "2026-05-27T13:45:42Z",
+  "pairs": [
+    {
+      "proxmox": "scripts/proxmox/deploy-cysvuln.sh",
+      "local": "scripts/build-cysvuln-local.sh",
+      "proxmox_exists": true,
+      "local_exists": true
+    },
+    {
+      "proxmox": "scripts/proxmox/deploy-asrep.sh",
+      "local": "scripts/build-asrep-local.sh",
+      "proxmox_exists": true,
+      "local_exists": true
+    },
+    {
+      "proxmox": "scripts/proxmox/baseline-snapshot-cysvuln.sh",
+      "local": "scripts/observability/baseline-snapshot.sh",
+      "proxmox_exists": true,
+      "local_exists": true
+    },
+    {
+      "proxmox": "scripts/proxmox/baseline-snapshot-asrep.sh",
+      "local": "scripts/observability/baseline-snapshot-asrep.sh",
+      "proxmox_exists": true,
+      "local_exists": true
+    },
+    {
+      "proxmox": "scripts/proxmox/deploy-wazuh-siem.sh",
+      "local": "scripts/wazuh-docker-up.sh",
+      "proxmox_exists": true,
+      "local_exists": true
+    },
+    {
+      "proxmox": "scripts/proxmox/deploy-arkime-capture.sh",
+      "local": "scripts/arkime-docker-up.sh",
+      "proxmox_exists": true,
+      "local_exists": true
+    },
+    {
+      "proxmox": "scripts/proxmox/sync-arkime-pcap.sh",
+      "local": "scripts/arkime-import-pcap.sh",
+      "proxmox_exists": true,
+      "local_exists": true
+    },
+    {
+      "proxmox": "scripts/proxmox/verify-wazuh-siem.sh",
+      "local": null,
+      "proxmox_exists": true,
+      "local_exists": false
+    },
+    {
+      "proxmox": "scripts/proxmox/verify-arkime-capture.sh",
+      "local": "scripts/observability/vnc-pcap-proof.sh",
+      "proxmox_exists": true,
+      "local_exists": true
+    },
+    {
+      "proxmox": "scripts/proxmox/rebuild-ews.sh",
+      "local": "scripts/hyperv/Build-SecretConEwsVhdx.ps1",
+      "proxmox_exists": true,
+      "local_exists": true
+    }
+  ],
+  "unpaired_proxmox_scripts": [
+    "scripts/proxmox/build-wazuh-template.sh",
+    "scripts/proxmox/configure-chain-dns.sh",
+    "scripts/proxmox/deploy-dc.sh",
+    "scripts/proxmox/disable-vmbr1-mirror.sh",
+    "scripts/proxmox/enable-vmbr1-mirror.sh",
+    "scripts/proxmox/enable-wazuh-replay-listener.sh",
+    "scripts/proxmox/opnsense-apply-config.sh",
+    "scripts/proxmox/opnsense-export-pcap.sh",
+    "scripts/proxmox/preflight-ews-prod.sh",
+    "scripts/proxmox/probe-ews.sh",
+    "scripts/proxmox/reproduce-ews-prod-proof.sh",
+    "scripts/proxmox/rollback-vmbr1-mirror.sh",
+    "scripts/proxmox/snapshot-before-mirror.sh",
+    "scripts/proxmox/sync-wazuh-rules.sh"
+  ]
+}

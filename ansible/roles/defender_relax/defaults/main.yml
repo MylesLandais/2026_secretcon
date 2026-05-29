@@ -1,0 +1,16 @@
+---
+defender_relax_install_dir: 'C:\secretcon'
+defender_relax_startup_script: "{{ defender_relax_install_dir }}\\defender-relax.ps1"
+defender_relax_startup_task_name: SecretConDefenderRelax
+defender_relax_register_startup_task: true
+
+defender_relax_exclusion_paths:
+  - 'C:\Program Files\SecretCon'
+  - 'C:\Program Files\TightVNC'
+  - 'C:\Users\Public'
+
+defender_relax_exclusion_extensions:
+  - .exe
+
+defender_relax_disable_rtp: true
+defender_relax_disable_antispyware_gpo: false

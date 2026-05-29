@@ -1,12 +1,3 @@
-packer {
-  required_plugins {
-    hyperv = {
-      version = ">= 1.1.0"
-      source  = "github.com/hashicorp/hyperv"
-    }
-  }
-}
-
 variable "hyperv_switch_name" {
   type        = string
   default     = "Default Switch"
@@ -40,7 +31,13 @@ variable "kasm_registration_token" {
 
 locals {
   ews_bootstrap_env = concat(
-    ["WAZUH_MANAGER=10.0.2.2", format("SECRETCON_KASM_DESKTOP=%s", var.secretcon_kasm_desktop ? "1" : "0")],
+    [
+      "WAZUH_MANAGER=10.0.2.2",
+      "SECRETCON_USER_FLAG=${var.secretcon_user_flag}",
+      "SECRETCON_ROOT_FLAG=${var.secretcon_root_flag}",
+      "SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD=${var.secretcon_shared_local_admin_password != "" ? var.secretcon_shared_local_admin_password : "PizzaMan123!"}",
+      format("SECRETCON_KASM_DESKTOP=%s", var.secretcon_kasm_desktop ? "1" : "0"),
+    ],
     var.kasm_api_host != "" ? ["KASM_API_HOST=${var.kasm_api_host}"] : [],
     ["KASM_API_PORT=${var.kasm_api_port}"],
     var.kasm_registration_token != "" ? ["KASM_REGISTRATION_TOKEN=${var.kasm_registration_token}"] : []
@@ -101,6 +98,19 @@ build {
   provisioner "powershell" {
     script           = local.bootstrap_script
     environment_vars = local.ews_bootstrap_env
+  }
+
+  provisioner "ansible" {
+    playbook_file      = local.ansible_playbook
+    ansible_env_vars   = concat(local.ews_bootstrap_env, ["ANSIBLE_CONFIG=${local.ansible_cfg}"])
+    inventory_file_template = local.ansible_inventory_template
+    inventory_directory     = "${local.repo_root}/ansible/inventory"
+    user               = local.ssh_username
+    use_proxy          = false
+    extra_arguments = [
+      "--extra-vars",
+      "ansible_shell_type=powershell wazuh_manager=10.0.2.2",
+    ]
   }
 
   provisioner "powershell" {

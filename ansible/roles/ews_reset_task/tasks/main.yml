@@ -1,0 +1,56 @@
+---
+# Scheduled in-guest reset loop for multi-tenant EWS challenge state.
+
+- name: Assert reset interval is competition-safe
+  ansible.builtin.assert:
+    that:
+      - ews_reset_task_interval_minutes | int >= 15
+      - ews_reset_task_interval_minutes | int <= 120
+    fail_msg: ews_reset_task_interval_minutes should stay between 15 and 120 minutes.
+
+- name: Ensure EWS reset install directory exists
+  ansible.windows.win_file:
+    path: "{{ ews_reset_install_dir }}"
+    state: directory
+
+- name: Deploy EWS state reset script
+  ansible.windows.win_template:
+    src: reset-ews-state.ps1.j2
+    dest: "{{ ews_reset_script_path }}"
+
+- name: Deploy EWS reset scheduled task XML
+  ansible.windows.win_template:
+    src: reset-ews-state-task.xml.j2
+    dest: "{{ ews_reset_task_xml_path }}"
+
+- name: Register EWS reset scheduled task as SYSTEM
+  ansible.windows.win_command: >-
+    schtasks.exe /Create
+    /TN "{{ ews_reset_task_name }}"
+    /XML "{{ ews_reset_task_xml_path }}"
+    /F
+  register: ews_reset_task_register
+  changed_when: "'SUCCESS' in (ews_reset_task_register.stdout | upper)"
+  when: not ansible_check_mode
+
+- name: Run EWS reset once after deploy
+  ansible.windows.win_command: >-
+    schtasks.exe /Run /TN "{{ ews_reset_task_name }}"
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - ews_reset_run_now_on_deploy | bool
+
+- name: Query EWS reset scheduled task
+  ansible.windows.win_command: >-
+    schtasks.exe /Query /TN "{{ ews_reset_task_name }}" /FO LIST /V
+  register: ews_reset_task_query
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Show EWS reset task status
+  ansible.builtin.debug:
+    var: ews_reset_task_query.stdout_lines
+  when:
+    - not ansible_check_mode
+    - ews_reset_task_query is defined

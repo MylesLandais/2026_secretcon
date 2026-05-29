@@ -42,43 +42,11 @@ if ! ssh "${PROXMOX_SSH}" "qm status ${TEMPLATE_VMID}" >/dev/null 2>&1; then
   exit 1
 fi
 
-step "Tearing down any existing VMID ${VMID}"
-ssh "${PROXMOX_SSH}" "qm stop ${VMID} 2>/dev/null || true; while qm status ${VMID} 2>/dev/null | grep -q running; do sleep 2; done; qm destroy ${VMID} --purge 1 --skiplock 1 2>/dev/null || true"
-
-step "Uploading cloud-init user-data + ssh pubkey"
-scp "${USER_DATA}" "${PROXMOX_SSH}:/var/lib/vz/snippets/wazuh-user.yaml"
-scp "${SSH_PUB}"   "${PROXMOX_SSH}:/root/.wazuh-deploy-pub.tmp"
-
-step "Cloning template ${TEMPLATE_VMID} → VMID ${VMID} (${VM_NAME})"
-ssh "${PROXMOX_SSH}" "qm clone ${TEMPLATE_VMID} ${VMID} --name ${VM_NAME} --full 1"
-
-step "Clearing inherited NICs from template (avoids Proxmox 9 hotplug-rewrite error)"
-ssh "${PROXMOX_SSH}" "qm set ${VMID} --delete net0 2>/dev/null || true; qm set ${VMID} --delete net1 2>/dev/null || true"
-
-step "Configuring VMID ${VMID} (dual NIC: vmbr0 mgmt+egress, vmbr1 service)"
-# net0 -> vmbr0 (DHCP) provides default route + internet for build (Wazuh upstream packages).
-# net1 -> vmbr1 (static 192.168.61.10/24, no gw) is the agent-facing address.
-ssh "${PROXMOX_SSH}" "qm set ${VMID} \
-  --memory 8192 \
-  --cores 4 \
-  --cpu host \
-  --net0 virtio,bridge=vmbr0,firewall=1 \
-  --net1 virtio,bridge=vmbr1,firewall=1 \
-  --ipconfig0 ip=dhcp \
-  --ipconfig1 ip=${VM_IP}/${VM_CIDR} \
-  --nameserver '1.1.1.1 ${VM_DNS}' \
-  --searchdomain secret-ctf.com \
-  --sshkeys /root/.wazuh-deploy-pub.tmp \
-  --cicustom 'user=local:snippets/wazuh-user.yaml' \
-  --agent enabled=1 \
-  --onboot 1 \
-  --tags wazuh,siem,secretcon"
-
-step "Resizing disk to 100G"
-ssh "${PROXMOX_SSH}" "qm resize ${VMID} scsi0 100G"
-
-step "Starting VMID ${VMID}"
-ssh "${PROXMOX_SSH}" "qm start ${VMID}"
+step "Provisioning VMID ${VMID} via Ansible (community.proxmox)"
+# shellcheck source=scripts/lib/ansible-proxmox-env.sh
+source "${REPO_ROOT}/scripts/lib/ansible-proxmox-env.sh"
+export TEMPLATE_VMID VMID VM_NAME VM_IP VM_CIDR VM_DNS SSH_PUB
+ansible_proxmox_run_playbook "${REPO_ROOT}" playbooks/proxmox/wazuh-siem.yml
 
 step "Waiting for cloud-init to finish (max 15 min, via Proxmox jump host)"
 DEADLINE=$(( $(date +%s) + 900 ))

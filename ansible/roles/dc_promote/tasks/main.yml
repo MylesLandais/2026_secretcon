@@ -1,0 +1,11 @@
+---
+# dc_promote role (scaffold).
+# Parity: dc-003, dc-004
+#
+# Port: AD-DS feature, generated promote script (Install-ADDSForest /
+# Install-ADDSDomainController). Reboot phase may stay PowerShell.
+
+- name: DC promote role not yet implemented
+  ansible.builtin.debug:
+    msg: Scaffold only — see ansible-parity-matrix.md dc-003+
+  when: false

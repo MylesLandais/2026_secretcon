@@ -1,0 +1,136 @@
+---
+# Deploy Arkime capture VM (replaces qm orchestration in deploy-arkime-capture.sh).
+- name: Deploy Arkime capture on Proxmox
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    arkime_template_vmid: "{{ lookup('env', 'TEMPLATE_VMID') | default('9000', true) | int }}"
+    arkime_vmid: "{{ lookup('env', 'ARKIME_VM_ID') | default('111', true) | int }}"
+    arkime_vm_name: "{{ lookup('env', 'ARKIME_VM_NAME') | default('crit-capture', true) }}"
+    arkime_vm_ip: "{{ lookup('env', 'ARKIME_VM_IP') | default('192.168.61.11', true) }}"
+    arkime_vm_cidr: "{{ lookup('env', 'ARKIME_VM_CIDR') | default('24', true) }}"
+    arkime_vm_dns: "{{ lookup('env', 'ARKIME_VM_DNS') | default('1.1.1.1', true) }}"
+    arkime_keep_vm: "{{ (lookup('env', 'ARKIME_KEEP') | default('0', true)) == '1' }}"
+    arkime_user_data_local: "{{ playbook_dir }}/../../../provisioning/cloud-init/arkime/user-data"
+    arkime_ssh_pub_local: "{{ lookup('env', 'SSH_PUB') | default(playbook_dir + '/../../../provisioning/ssh/packer_ed25519.pub', true) }}"
+
+  tasks:
+    - name: Require Proxmox API password
+      ansible.builtin.assert:
+        that:
+          - proxmox_api_password | length > 0
+
+    - name: Tear down existing Arkime VM
+      ansible.builtin.include_role:
+        name: proxmox_vm_destroy
+      vars:
+        proxmox_destroy_vmid: "{{ arkime_vmid }}"
+      when: not arkime_keep_vm
+
+    - name: Upload cloud-init user-data
+      ansible.builtin.copy:
+        src: "{{ arkime_user_data_local }}"
+        dest: "/var/lib/vz/snippets/arkime-user.yaml"
+      delegate_to: "{{ proxmox_api_host }}"
+      vars:
+        ansible_user: root
+        ansible_password: "{{ proxmox_api_password }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+      when:
+        - not ansible_check_mode
+        - not arkime_keep_vm
+
+    - name: Upload deploy SSH public key
+      ansible.builtin.copy:
+        src: "{{ arkime_ssh_pub_local }}"
+        dest: "/root/.arkime-deploy-pub.tmp"
+        mode: "0644"
+      delegate_to: "{{ proxmox_api_host }}"
+      vars:
+        ansible_user: root
+        ansible_password: "{{ proxmox_api_password }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+      when:
+        - not ansible_check_mode
+        - not arkime_keep_vm
+
+    - name: Clone template to Arkime VMID
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ arkime_template_vmid }}"
+        clone: "template-{{ arkime_template_vmid }}"
+        newid: "{{ arkime_vmid }}"
+        name: "{{ arkime_vm_name }}"
+        full: true
+        state: present
+      when:
+        - not ansible_check_mode
+        - not arkime_keep_vm
+
+    - name: Remove inherited NICs
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ arkime_vmid }}"
+        update: true
+        delete: "net0,net1"
+      when: not ansible_check_mode
+
+    - name: Configure Arkime VM
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ arkime_vmid }}"
+        update: true
+        memory: 8192
+        cores: 4
+        cpu: host
+        net:
+          net0: "virtio,bridge=vmbr0,firewall=1"
+          net1: "virtio,bridge=vmbr1,firewall=1"
+        ipconfig:
+          ipconfig0: "ip=dhcp"
+          ipconfig1: "ip={{ arkime_vm_ip }}/{{ arkime_vm_cidr }}"
+        nameservers:
+          - "{{ arkime_vm_dns }}"
+        searchdomains:
+          - secret-ctf.com
+        cicustom: "user=local:snippets/arkime-user.yaml"
+        sshkeys: "/root/.arkime-deploy-pub.tmp"
+        agent: "enabled=1"
+        onboot: true
+        tags: "arkime,capture,secretcon"
+      when: not ansible_check_mode
+
+    - name: Resize Arkime VM disk to 80G
+      ansible.builtin.command:
+        cmd: "qm resize {{ arkime_vmid }} scsi0 80G"
+      delegate_to: "{{ proxmox_api_host }}"
+      vars:
+        ansible_user: root
+        ansible_password: "{{ proxmox_api_password }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+      failed_when: false
+      when: not ansible_check_mode
+
+    - name: Start Arkime VM
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ arkime_vmid }}"
+        state: started
+      when: not ansible_check_mode

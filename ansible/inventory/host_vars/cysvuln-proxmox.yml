@@ -1,0 +1,11 @@
+---
+# Live Proxmox CysVuln (VMID 118). ansible_host from proxmox.discovered.yml when generated.
+wazuh_agent_group: cysvuln
+ansible_connection: winrm
+ansible_port: 5985
+ansible_winrm_scheme: http
+ansible_winrm_transport: ntlm
+ansible_winrm_server_cert_validation: ignore
+ansible_user: Administrator
+# Baseline VMID 118 enrolls Administrator as `packer` (Packer winrm_bootstrap default).
+ansible_password: "{{ lookup('env', 'SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD') | default('packer', true) }}"

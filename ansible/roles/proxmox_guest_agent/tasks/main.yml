@@ -1,0 +1,74 @@
+---
+- name: Check for existing QEMU guest agent service
+  ansible.windows.win_service_info:
+    name: "{{ item }}"
+  register: proxmox_ga_service_probe
+  loop: "{{ proxmox_guest_agent_service_names }}"
+  failed_when: false
+  when: proxmox_guest_agent_enabled | bool
+
+- name: Set guest agent already installed flag
+  ansible.builtin.set_fact:
+    proxmox_guest_agent_installed: >-
+      {{
+        proxmox_ga_service_probe.results
+        | selectattr('exists', 'defined')
+        | selectattr('exists')
+        | list
+        | length > 0
+      }}
+  when: proxmox_guest_agent_enabled | bool
+
+- name: Download virtio-win guest tools installer
+  ansible.windows.win_get_url:
+    url: "{{ proxmox_guest_agent_installer_url }}"
+    dest: "{{ proxmox_guest_agent_installer_dest }}"
+    force: false
+  when:
+    - proxmox_guest_agent_enabled | bool
+    - not (proxmox_guest_agent_installed | default(false) | bool)
+    - not ansible_check_mode
+
+- name: Install QEMU guest agent MSI
+  ansible.windows.win_package:
+    path: "{{ proxmox_guest_agent_installer_dest }}"
+    state: present
+  register: proxmox_ga_install
+  when:
+    - proxmox_guest_agent_enabled | bool
+    - not (proxmox_guest_agent_installed | default(false) | bool)
+    - not ansible_check_mode
+
+- name: Resolve QEMU guest agent service name
+  ansible.windows.win_service_info:
+    name: "{{ item }}"
+  register: proxmox_ga_service_resolve
+  loop: "{{ proxmox_guest_agent_service_names }}"
+  failed_when: false
+  when: proxmox_guest_agent_enabled | bool
+
+- name: Pick installed guest agent service
+  ansible.builtin.set_fact:
+    proxmox_guest_agent_service_name: >-
+      {{
+        (
+          proxmox_ga_service_resolve.results
+          | selectattr('exists', 'defined')
+          | selectattr('exists')
+          | map(attribute='services')
+          | flatten
+          | map(attribute='name')
+          | list
+          | first
+        ) | default('QEMU-GA', true)
+      }}
+  when: proxmox_guest_agent_enabled | bool
+
+- name: Ensure QEMU guest agent service is running
+  ansible.windows.win_service:
+    name: "{{ proxmox_guest_agent_service_name }}"
+    start_mode: auto
+    state: started
+  when:
+    - proxmox_guest_agent_enabled | bool
+    - not ansible_check_mode

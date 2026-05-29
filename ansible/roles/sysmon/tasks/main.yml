@@ -1,0 +1,102 @@
+---
+# Sysmon role.
+#
+# Goal: converge the Sysmon configuration on a Windows host to the file
+# at ansible/roles/sysmon/files/sysmonconfig.xml (which is a symlink to
+# provisioning/powershell/assets/sysmonconfig.xml — single source of truth
+# until step 4 of the migration order moves the file under ansible/).
+#
+# The drift this role MUST report under --check --diff against live EWS
+# at 192.168.60.109 today (2026-05-26):
+#   - existing C:\secretcon\sysmon-config.xml lacks the
+#     "DestinationPort SecretConVNCBruteCandidate 5900" include in
+#     <NetworkConnect onmatch="include">. That blocks Wazuh rule 100800
+#     from firing on inbound VNC brute-force connects. See
+#     provisioning/powershell/assets/sysmonconfig.xml:277 for the canonical
+#     line.
+
+- name: Ensure SecretCon install directory exists
+  ansible.windows.win_file:
+    path: "{{ sysmon_install_dir }}"
+    state: directory
+
+- name: Compute controller-side SHA256 of {{ sysmon_config_src_filename }} (raw bytes)
+  ansible.builtin.set_fact:
+    sysmon_local_sha256: "{{ lookup('ansible.builtin.pipe', 'sha256sum ' ~ role_path ~ '/files/' ~ sysmon_config_src_filename) | regex_replace('\\s.*$', '') }}"
+  delegate_to: localhost
+  run_once: true
+  check_mode: false
+  vars:
+    ansible_connection: local
+
+- name: Verify pinned sysmon_config_sha256 matches the controller-side file
+  ansible.builtin.assert:
+    that:
+      - sysmon_local_sha256 == sysmon_config_sha256
+    fail_msg: >-
+      ansible/roles/sysmon/files/{{ sysmon_config_src_filename }} hash
+      ({{ sysmon_local_sha256 }}) drifted from sysmon_config_sha256
+      ({{ sysmon_config_sha256 }}) in group_vars/all.yml. Update both
+      pins together (also: provisioning/powershell/lib/SecretCon.Bootstrap.psm1
+      Install-SecretConSysmon -ExpectedSha fallback).
+  delegate_to: localhost
+  run_once: true
+  check_mode: false
+  vars:
+    ansible_connection: local
+
+- name: Push sysmon config to {{ sysmon_install_dir }}\{{ sysmon_config_dest_filename }}
+  ansible.windows.win_copy:
+    src: "{{ sysmon_config_src_filename }}"
+    dest: "{{ sysmon_install_dir }}\\{{ sysmon_config_dest_filename }}"
+    force: true
+  notify: "sysmon config changed"
+  register: sysmon_copy_result
+
+- name: Verify on-disk sysmon config SHA matches pinned value
+  ansible.windows.win_stat:
+    path: "{{ sysmon_install_dir }}\\{{ sysmon_config_dest_filename }}"
+    checksum_algorithm: sha256
+  register: sysmon_remote_stat
+  when: not ansible_check_mode
+
+- name: Assert remote sysmon config SHA matches sysmon_config_sha256
+  ansible.builtin.assert:
+    that:
+      - sysmon_remote_stat.stat.exists
+      - sysmon_remote_stat.stat.checksum == sysmon_config_sha256
+    fail_msg: >-
+      Remote {{ sysmon_install_dir }}\{{ sysmon_config_dest_filename }}
+      hash ({{ sysmon_remote_stat.stat.checksum | default('absent') }})
+      does not match sysmon_config_sha256 ({{ sysmon_config_sha256 }}).
+      The win_copy step should have made these match — investigate the
+      transport.
+  when: not ansible_check_mode
+
+- name: Detect installed Sysmon service
+  ansible.windows.win_service:
+    name: "{{ sysmon_service_name }}"
+  register: sysmon_service_state
+  failed_when: false
+
+- name: Install Sysmon if the service is not present
+  when:
+    - not sysmon_service_state.exists | default(false)
+    - not ansible_check_mode
+  block:
+    - name: Download Sysinternals Sysmon zip
+      ansible.windows.win_get_url:
+        url: "{{ sysmon_binary_url }}"
+        dest: "{{ sysmon_binary_dest }}"
+        force: false
+
+    - name: Extract Sysmon binaries
+      community.windows.win_unzip:
+        src: "{{ sysmon_binary_dest }}"
+        dest: "{{ sysmon_binary_extract_dir }}"
+        creates: "{{ sysmon_binary_exe }}"
+
+    - name: Install Sysmon driver with current config
+      ansible.windows.win_command: "{{ sysmon_binary_exe }} -accepteula -i {{ sysmon_install_dir }}\\{{ sysmon_config_dest_filename }}"
+      register: sysmon_install_result
+      changed_when: "'Sysmon installed' in sysmon_install_result.stdout or 'Sysmon64 installed' in sysmon_install_result.stdout"

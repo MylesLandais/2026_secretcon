@@ -1,0 +1,4 @@
+.cache/
+collections/
+*.retry
+inventory/proxmox.discovered.yml

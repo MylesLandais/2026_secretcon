@@ -1,0 +1,10 @@
+---
+# asrep_users_and_flags role (scaffold — migration step 5).
+# Parity: asr-017–020
+#
+# Port: New-ADUser enite, DoesNotRequirePreAuth, decoys, flag files + icacls.
+
+- name: AS-REP users and flags role not yet implemented
+  ansible.builtin.debug:
+    msg: Scaffold only — see ansible-parity-matrix.md asr-017+
+  when: false

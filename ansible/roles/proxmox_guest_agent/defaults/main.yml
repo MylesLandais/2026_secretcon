@@ -1,0 +1,14 @@
+---
+# QEMU guest agent for Proxmox memory stats and graceful shutdown.
+
+proxmox_guest_agent_enabled: true
+
+# latest-qemu-ga symlink on fedorapeople (redirects to pinned archive build).
+proxmox_guest_agent_installer_url: >-
+  https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-qemu-ga/qemu-ga-x86_64.msi
+
+proxmox_guest_agent_installer_dest: C:\Windows\Temp\qemu-ga-x86_64.msi
+
+proxmox_guest_agent_service_names:
+  - QEMU-GA
+  - qemu-ga

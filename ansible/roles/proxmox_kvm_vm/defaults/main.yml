@@ -1,0 +1,15 @@
+---
+proxmox_kvm_vmid: 109
+proxmox_kvm_memory: 8192
+proxmox_kvm_cores: 4
+proxmox_kvm_cpu: host
+proxmox_kvm_bridge: vmbr1
+proxmox_kvm_net_model: e1000
+proxmox_kvm_firewall: true
+
+# Set true after in-guest QEMU-GA is installed (ews converge sets via extra-var).
+proxmox_kvm_enable_agent: false
+proxmox_kvm_agent: "enabled=1,type=virtio"
+
+proxmox_kvm_update: true
+proxmox_kvm_reboot_on_change: false

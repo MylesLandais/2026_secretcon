@@ -1,0 +1,34 @@
+---
+# CysVuln convergence — telemetry only on live Proxmox VM (VMID 118).
+# Challenge levers (EFS, AIE, flags) remain in bootstrap_cysvuln.ps1 until cyv-* parity lands.
+- name: Converge CysVuln Windows challenge VM (telemetry)
+  hosts: cysvuln
+  gather_facts: true
+  any_errors_fatal: true
+
+  pre_tasks:
+    - name: Align local Administrator password with campaign shared-admin pivot
+      ansible.windows.win_user:
+        name: Administrator
+        password: "{{ secretcon_shared_local_admin_password }}"
+        state: present
+      no_log: true
+      tags: [always, campaign_shared_admin]
+      when: lookup('env', 'SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD') | length > 0
+
+  roles:
+    - role: sysmon
+      tags: [sysmon, telemetry]
+    - role: wazuh_agent
+      tags: [wazuh_agent, telemetry]
+
+  tasks:
+    - name: Reapply Wazuh agent MSI with cysvuln group (fixes ews-group enroll drift)
+      ansible.windows.win_package:
+        path: "{{ wazuh_agent_msi_path }}"
+        arguments: >-
+          /q REINSTALL=ALL REINSTALLMODE=vomus
+          WAZUH_MANAGER={{ wazuh_manager }}
+          WAZUH_AGENT_GROUP={{ wazuh_agent_group }}
+        state: present
+      tags: [wazuh_agent, telemetry]

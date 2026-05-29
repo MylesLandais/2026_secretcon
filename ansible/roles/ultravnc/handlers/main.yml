@@ -1,0 +1,8 @@
+---
+- name: restart UltraVNC listener
+  ansible.windows.win_shell: |
+    Get-Process winvnc -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Seconds 1
+    Start-Process -FilePath "{{ ultravnc_install_dir }}\winvnc.exe" -ArgumentList "-run"
+    Start-Sleep -Seconds 3
+  listen: "ultravnc service config changed"

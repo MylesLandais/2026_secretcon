@@ -1,0 +1,43 @@
+---
+# patrick user + Winlogon auto-logon (ews-005, ews-015).
+
+- name: Ensure patrick local user exists
+  ansible.windows.win_user:
+    name: "{{ autologon_user_name }}"
+    password: "{{ autologon_password }}"
+    fullname: "{{ autologon_user_full_name }}"
+    description: "{{ autologon_user_description }}"
+    state: present
+    password_never_expires: true
+  when: autologon_create_user | bool
+  no_log: true
+
+- name: Add patrick to Users group
+  ansible.windows.win_group_membership:
+    name: Users
+    members:
+      - "{{ autologon_user_name }}"
+    state: present
+  when: autologon_create_user | bool
+
+- name: Remove patrick from Administrators
+  ansible.windows.win_group_membership:
+    name: Administrators
+    members:
+      - "{{ autologon_user_name }}"
+    state: absent
+  when: autologon_create_user | bool
+
+- name: Configure Winlogon auto-admin logon for VNC desktop
+  ansible.windows.win_regedit:
+    path: "{{ autologon_winlogon_path }}"
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: "{{ item.type }}"
+  loop:
+    - { name: AutoAdminLogon, data: "{{ 1 if autologon_enabled | bool else 0 }}", type: dword }
+    - { name: DefaultUserName, data: "{{ autologon_user_name }}", type: string }
+    - { name: DefaultPassword, data: "{{ autologon_password }}", type: string }
+    - { name: DefaultDomainName, data: "{{ autologon_domain }}", type: string }
+    - { name: ForceAutoLogon, data: "{{ 1 if autologon_force | bool else 0 }}", type: dword }
+  no_log: true

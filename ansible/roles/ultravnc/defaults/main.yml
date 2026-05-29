@@ -1,0 +1,35 @@
+---
+# UltraVNC role defaults. Per-host overrides live in host_vars/<host>.yml.
+
+ultravnc_chocolatey_package: ultravnc
+ultravnc_password: "{{ lookup('env', 'VNC_PW') | default('FELDTECH_VNC', true) }}"
+# UltraVNC setpasswd.exe only accepts 8 chars; RFB VncAuth uses the same first 8 bytes.
+ultravnc_password_setpasswd: "{{ ultravnc_password[:8] }}"
+
+ultravnc_install_dir: 'C:\Program Files\uvnc bvba\UltraVNC'
+ultravnc_ini_path: "{{ ultravnc_install_dir }}\\ultravnc.ini"
+ultravnc_service_name: uvnc_service
+ultravnc_scheduled_task_name: SecretCon-UltraVNC-Run
+ultravnc_listen_port: 5900
+
+ultravnc_firewall_rule_name: SecretCon-UltraVNC-In-TCP
+ultravnc_firewall_rule_display_name: SecretCon UltraVNC Server
+
+# Legacy TightVNC service to disable when migrating.
+ultravnc_remove_tightvnc: true
+ultravnc_tightvnc_service_name: tvnserver
+ultravnc_tightvnc_msi_path: 'C:\secretcon\tightvnc-2.8.87-gpl-setup-64bit.msi'
+
+ultravnc_wordlist_path: "{{ role_path }}/../../../provisioning/wordlists/vnc-betterdefaultpasslist.txt"
+ultravnc_cred_tool_path: "{{ role_path }}/../../../scripts/observability/vnc-cred-tool.py"
+ultravnc_passwd_encode_path: "{{ role_path }}/../../../scripts/observability/ultravnc-passwd-encode.py"
+
+# Wazuh tailer + registry audit (same layout as tightvnc role).
+ultravnc_install_staging_dir: 'C:\secretcon'
+ultravnc_tailer_filename: wazuh-tvnserver-tail.ps1
+ultravnc_tailer_dest: "{{ ultravnc_install_staging_dir }}\\{{ ultravnc_tailer_filename }}"
+
+# UltraVNC registry root when UseRegistry=1 (optional forensic path).
+ultravnc_reg_path: 'HKLM:\SOFTWARE\ORL\WinVNC3'
+
+ultravnc_force_reinstall: false

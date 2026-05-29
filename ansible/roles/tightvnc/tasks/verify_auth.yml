@@ -1,0 +1,38 @@
+---
+# Live RFB VncAuth check from the controller — fails fast when registry and runtime diverge.
+
+- name: Flush handlers so tvnserver has restarted before auth probe
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure tvnserver is running before auth probe
+  ansible.windows.win_service:
+    name: "{{ tightvnc_service_name }}"
+    start_mode: auto
+    state: started
+  when: not ansible_check_mode
+
+- name: Brief pause for tvnserver to accept connections after restart
+  ansible.builtin.pause:
+    seconds: 2
+  when: not ansible_check_mode
+
+- name: Verify live VNC accepts the planted password over RFB
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ role_path }}/files/check_vnc_auth.py"
+      - --host
+      - "{{ ansible_host }}"
+      - --port
+      - "{{ tightvnc_listen_port | string }}"
+      - --password
+      - "{{ tightvnc_password }}"
+      - --cred-tool
+      - "{{ tightvnc_cred_tool_path }}"
+  delegate_to: localhost
+  register: tightvnc_auth_verify
+  changed_when: false
+  failed_when: tightvnc_auth_verify.rc != 0
+  when: not ansible_check_mode
+  vars:
+    ansible_connection: local

@@ -1,0 +1,12 @@
+---
+# Collections required by the SecretCon Windows roles. Install with:
+#   ansible-galaxy collection install -r ansible/requirements.yml
+collections:
+  - name: ansible.windows
+    version: ">=2.5.0"
+  - name: community.windows
+    version: ">=2.3.0"
+  - name: chocolatey.chocolatey
+    version: ">=1.5.0"
+  - name: community.proxmox
+    version: ">=1.6.0"

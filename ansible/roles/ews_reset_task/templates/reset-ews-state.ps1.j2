@@ -1,0 +1,75 @@
+$ErrorActionPreference = 'Continue'
+
+$logPath = '{{ ews_reset_log_path }}'
+$lpeServiceName = '{{ ews_reset_lpe_service_name }}'
+$lpeServiceExe = '{{ ews_reset_lpe_service_exe }}'
+$lpeHijackPath = '{{ ews_reset_lpe_hijack_path }}'
+$ultraServiceName = '{{ ews_reset_ultravnc_service_name }}'
+$ultraProcessName = '{{ ews_reset_ultravnc_process_name }}'
+$ultraWatchdogTaskName = '{{ ews_reset_ultravnc_watchdog_task_name }}'
+$userFlagPath = '{{ ews_reset_user_flag_path }}'
+$userFlagScript = '{{ ews_reset_user_flag_script }}'
+$userDesktop = '{{ ews_reset_user_desktop }}'
+
+function Write-ResetLog {
+    param([string]$Message)
+    $stamp = (Get-Date).ToString('o')
+    Add-Content -LiteralPath $logPath -Encoding ascii -Value "[$stamp] $Message"
+}
+
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $logPath) | Out-Null
+Write-ResetLog 'reset start'
+
+try {
+    if (Test-Path -LiteralPath $lpeHijackPath) {
+        Remove-Item -LiteralPath $lpeHijackPath -Force
+        Write-ResetLog "removed hijack payload: $lpeHijackPath"
+    }
+
+    if (-not (Test-Path -LiteralPath $lpeServiceExe)) {
+        Write-ResetLog "missing legitimate service binary: $lpeServiceExe"
+    }
+
+    $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$lpeServiceName"
+    if (Test-Path -LiteralPath $svcKey) {
+        $imagePath = (Get-ItemProperty -LiteralPath $svcKey -Name ImagePath -ErrorAction SilentlyContinue).ImagePath
+        if ($imagePath -ne $lpeServiceExe) {
+            sc.exe config $lpeServiceName binPath= $lpeServiceExe | Out-Null
+            Write-ResetLog "reset ImagePath to unquoted path: $lpeServiceExe"
+        }
+    } else {
+        Write-ResetLog "missing service key: $svcKey"
+    }
+
+    sc.exe stop $lpeServiceName | Out-Null
+    Start-Sleep -Seconds 2
+    sc.exe start $lpeServiceName | Out-Null
+    Write-ResetLog "restarted service: $lpeServiceName"
+} catch {
+    Write-ResetLog "LPE reset error: $($_.Exception.Message)"
+}
+
+try {
+    Remove-Item -LiteralPath $userFlagPath -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $userFlagScript) {
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File $userFlagScript -DesktopPath $userDesktop
+        Write-ResetLog "reseeded user flag: $userFlagPath"
+    } else {
+        Write-ResetLog "missing user flag seeder: $userFlagScript"
+    }
+} catch {
+    Write-ResetLog "flag reset error: $($_.Exception.Message)"
+}
+
+try {
+    Stop-Service -Name $ultraServiceName -Force -ErrorAction SilentlyContinue
+    Get-Process -Name $ultraProcessName -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Seconds 2
+    Start-ScheduledTask -TaskName $ultraWatchdogTaskName -ErrorAction SilentlyContinue
+    Start-Service -Name $ultraServiceName -ErrorAction SilentlyContinue
+    Write-ResetLog 'restarted UltraVNC listener/watchdog'
+} catch {
+    Write-ResetLog "UltraVNC reset error: $($_.Exception.Message)"
+}
+
+Write-ResetLog 'reset complete'

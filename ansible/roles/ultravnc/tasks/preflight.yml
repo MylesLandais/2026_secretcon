@@ -1,0 +1,50 @@
+---
+# Controller-side assertions before touching the guest.
+
+- name: Stat vendored VNC wordlist on controller
+  ansible.builtin.stat:
+    path: "{{ ultravnc_wordlist_path }}"
+  delegate_to: localhost
+  run_once: true
+  register: ultravnc_wordlist_stat
+  vars:
+    ansible_connection: local
+
+- name: Require vendored VNC wordlist
+  ansible.builtin.assert:
+    that:
+      - ultravnc_wordlist_stat.stat.exists
+      - ultravnc_wordlist_stat.stat.isreg
+    fail_msg: >-
+      Missing wordlist at {{ ultravnc_wordlist_path }}.
+      See provisioning/wordlists/readme.md.
+  run_once: true
+
+- name: Load vendored VNC wordlist lines
+  ansible.builtin.slurp:
+    src: "{{ ultravnc_wordlist_path }}"
+  delegate_to: localhost
+  run_once: true
+  register: ultravnc_wordlist_slurp
+  vars:
+    ansible_connection: local
+
+- name: Parse wordlist entries
+  ansible.builtin.set_fact:
+    ultravnc_wordlist_entries: >-
+      {{
+        (ultravnc_wordlist_slurp.content | b64decode).splitlines()
+        | map('trim')
+        | reject('equalto', '')
+        | reject('match', '^#')
+        | list
+      }}
+  run_once: true
+
+- name: Assert planted VNC password is in wordlist
+  ansible.builtin.assert:
+    that: ultravnc_password in ultravnc_wordlist_entries
+    fail_msg: >-
+      ultravnc_password={{ ultravnc_password }} is not listed in
+      {{ ultravnc_wordlist_path }}.
+  run_once: true

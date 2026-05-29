@@ -1,0 +1,46 @@
+---
+# TightVNC role — MSI install, registry converge, runtime blacklist tuning, live verify.
+#
+# Import order:
+#   1. encode_password.yml  — expected DES blob on controller
+#   2. install.yml          — MSI when LogLevel / password / paths drift
+#   3. set_password.yml     — stop service, write Password blob, restart via handler
+#   4. service_config.yml   — blacklist, SecurityType, firewall, per-IP block purge
+#   5. observability.yml    — SACL + Wazuh tailer
+#   6. verify_auth.yml      — RFB login probe from controller
+#   7. verify_state.yml     — reg query + firewall assertions in play log
+#
+# Per-IP blacklist: TightVNC 2.x stores failed-auth counters as REG_DWORD values
+# whose *name* is the client IPv4 (e.g. 192.168.61.12), not FailedAuth* prefixes.
+# Never use a regex like ^Blacklist on HKLM\SOFTWARE\TightVNC\Server — it deletes
+# BlacklistThreshold and BlacklistTimeout (tvnserver then defaults threshold to 5).
+#
+# If registry decode shows FELDTECH_VNC but hydra/msf hit SecurityResult -30, run:
+#   ./scripts/proxmox/converge-ews.sh --ews-host <ip>
+# Prefer check_vnc_auth.py (RFB) or msf vnc_login over hydra — see
+# docs/runbooks/ews-vnc-adversary-emulation.md.
+# Hot-test without Ansible: scripts/observability/vnc-hot-test-registry-fix.sh
+
+- ansible.builtin.import_tasks: preflight.yml
+  tags: [tightvnc, tightvnc_preflight]
+
+- ansible.builtin.import_tasks: encode_password.yml
+  tags: [tightvnc, tightvnc_password, tightvnc_msi, tightvnc_service, tightvnc_verify]
+
+- ansible.builtin.import_tasks: install.yml
+  tags: [tightvnc, tightvnc_msi]
+
+- ansible.builtin.import_tasks: set_password.yml
+  tags: [tightvnc, tightvnc_service, tightvnc_password]
+
+- ansible.builtin.import_tasks: service_config.yml
+  tags: [tightvnc, tightvnc_service]
+
+- ansible.builtin.import_tasks: observability.yml
+  tags: [tightvnc, tightvnc_observability]
+
+- ansible.builtin.import_tasks: verify_auth.yml
+  tags: [tightvnc, tightvnc_verify]
+
+- ansible.builtin.import_tasks: verify_state.yml
+  tags: [tightvnc, tightvnc_verify, tightvnc_state]

@@ -1,0 +1,19 @@
+---
+# Sysmon role defaults. Per-host or group_vars overrides win.
+
+sysmon_install_dir: 'C:\secretcon'
+
+# Controller-side filename (under roles/sysmon/files/, symlink to
+# provisioning/powershell/assets/sysmonconfig.xml). Windows-side dest
+# uses the hyphenated form to match Install-SecretConSysmon's existing
+# layout in C:\secretcon\sysmon-config.xml.
+sysmon_config_src_filename: sysmonconfig.xml
+sysmon_config_dest_filename: sysmon-config.xml
+sysmon_service_name: Sysmon64
+sysmon_binary_url: https://download.sysinternals.com/files/Sysmon.zip
+sysmon_binary_dest: 'C:\secretcon\Sysmon.zip'
+sysmon_binary_extract_dir: 'C:\secretcon\Sysmon'
+sysmon_binary_exe: 'C:\secretcon\Sysmon\Sysmon64.exe'
+
+# Pinned in group_vars/all.yml; do not override here.
+# sysmon_config_sha256: <set in all.yml>

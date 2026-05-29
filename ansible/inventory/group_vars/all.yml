@@ -1,0 +1,20 @@
+---
+# Cross-role defaults. Anything that lives in a per-builder Packer locals
+# block (see infrastructure/packer/ews/ews-shared.pkr.hcl) and needs to be
+# the same value across every builder belongs here.
+wazuh_manager: "192.168.61.10"
+wazuh_agent_version: "4.14.5"
+
+# Sysmon config SHA must match the value pinned in
+# provisioning/powershell/lib/SecretCon.Bootstrap.psm1::Install-SecretConSysmon.
+# Update this and that fallback in lockstep, or move both behind a single
+# source-of-truth file in step 4 of the migration order.
+sysmon_config_sha256: "747fe516fb5319962106081ae2ce30f769ad2e4e99db7120ccda726c290b12eb"
+
+# Campaign misconfig: shared local Administrator password (PtH pivot EWS <-> CysVuln).
+# Maps bootstrap_win.ps1 / bootstrap_cysvuln.ps1 (ews-004, cyv-004).
+secretcon_shared_local_admin_password: "{{ lookup('env', 'SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD') | default('PizzaMan123!', true) }}"
+
+# Flag placeholders — override via .env / Packer for real campaigns.
+secretcon_user_flag: "{{ lookup('env', 'SECRETCON_USER_FLAG') | default('crit-low-priv-patrick', true) }}"
+secretcon_root_flag: "{{ lookup('env', 'SECRETCON_ROOT_FLAG') | default('crit-root-system-privs', true) }}"

@@ -1,0 +1,10 @@
+---
+# Campaign/static IPv4 for EWS (avoids DHCP drift on vmbr1 reboots).
+# Set EWS_STATIC_IP in .env (empty = skip).
+
+ews_network_static_enabled: "{{ lookup('env', 'EWS_STATIC_IP') | default('', true) | length > 0 }}"
+
+ews_static_ip: "{{ lookup('env', 'EWS_STATIC_IP') | default('192.168.61.20', true) }}"
+ews_static_prefix: "{{ lookup('env', 'EWS_STATIC_PREFIX') | default('24', true) | int }}"
+ews_static_gateway: "{{ lookup('env', 'EWS_STATIC_GATEWAY') | default('192.168.61.1', true) }}"
+ews_static_dns: "{{ lookup('env', 'EWS_STATIC_DNS') | default('192.168.61.52,192.168.61.10', true) }}"

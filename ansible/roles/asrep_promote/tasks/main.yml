@@ -1,0 +1,13 @@
+---
+# asrep_promote role (scaffold — migration step 5).
+# Parity: asr-003–005, asr-010–016, asr-021
+#
+# Packer/bootstrap-phase: Install-ADDSForest + reboot may stay in
+# asrep-bootstrap-runtime.ps1 until SSH is stable post-promotion.
+#
+# Post-DC port: password policy, auditpol, ksetup, firewall, network Private.
+
+- name: AS-REP promote role not yet implemented
+  ansible.builtin.debug:
+    msg: Scaffold only — see ansible-parity-matrix.md asr-003+
+  when: false

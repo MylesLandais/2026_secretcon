@@ -1,0 +1,15 @@
+---
+# Tear down DC VM before packer rebuild (deploy-dc.sh).
+- name: Tear down DC VM on Proxmox
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    dc_vmid: "{{ dc_vmid | default(120) | int }}"
+
+  tasks:
+    - name: Destroy DC VM
+      ansible.builtin.include_role:
+        name: proxmox_vm_destroy
+      vars:
+        proxmox_destroy_vmid: "{{ dc_vmid }}"

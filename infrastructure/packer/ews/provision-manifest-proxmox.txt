@@ -8,4 +8,5 @@ provisioning/openssh/OpenSSH-Win64.zip
 provisioning/tightvnc/tightvnc-2.8.87-gpl-setup-64bit.msi
 provisioning/ssh/packer_ed25519.pub
 provisioning/powershell/assets/sysmonconfig.xml
+provisioning/powershell/assets/wazuh-tvnserver-tail.ps1
 provisioning/powershell/lib/SecretCon.Bootstrap.psm1

@@ -1,0 +1,184 @@
+---
+# SecretConEwsSync unquoted service path LPE (ews-011).
+
+- name: Ensure EWS sync service directories exist
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ ews_lpe_service_root }}"
+    - "{{ ews_lpe_service_dir }}"
+
+- name: Compile and install EWS sync service binary
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $serviceExe = '{{ ews_lpe_service_exe }}'
+      $serviceSource = @'
+      using System;
+      using System.ServiceProcess;
+      using System.Threading;
+
+      public class EwsSyncService : ServiceBase {
+          private readonly ManualResetEvent stopSignal = new ManualResetEvent(false);
+          private Thread worker;
+
+          public EwsSyncService() {
+              ServiceName = "{{ ews_lpe_service_name }}";
+              CanStop = true;
+              CanPauseAndContinue = false;
+              AutoLog = false;
+          }
+
+          protected override void OnStart(string[] args) {
+              worker = new Thread(() => stopSignal.WaitOne());
+              worker.IsBackground = true;
+              worker.Start();
+          }
+
+          protected override void OnStop() {
+              stopSignal.Set();
+          }
+
+          public static void Main() {
+              ServiceBase.Run(new EwsSyncService());
+          }
+      }
+      '@
+      if (-not (Test-Path -LiteralPath $serviceExe)) {
+          Add-Type -TypeDefinition $serviceSource -Language CSharp `
+            -OutputAssembly $serviceExe -OutputType ConsoleApplication `
+            -ReferencedAssemblies @('System.dll', 'System.ServiceProcess.dll') `
+            -ErrorAction Stop
+          $Ansible.Changed = $true
+      } else {
+          $Ansible.Changed = $false
+      }
+  when: not ansible_check_mode
+
+- name: Set ACLs on EWS sync service binary and directories
+  ansible.windows.win_command: "{{ item }}"
+  loop:
+    - 'icacls "{{ ews_lpe_service_exe }}" /inheritance:r /grant "SYSTEM:F" "Administrators:F"'
+    - 'icacls "{{ ews_lpe_service_dir }}" /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)"'
+    - 'icacls "{{ ews_lpe_service_root }}" /grant "BUILTIN\Users:(OI)(CI)(M)"'
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Remove participant hijack payload from unquoted service path
+  ansible.windows.win_file:
+    path: "{{ ews_lpe_hijack_path }}"
+    state: absent
+  when: not ansible_check_mode
+  tags: [ews_lpe_reset]
+
+- name: Query existing SecretConEwsSync service
+  ansible.windows.win_command: sc.exe query {{ ews_lpe_service_name }}
+  register: ews_lpe_sc_query
+  failed_when: false
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Create SecretConEwsSync Windows service (unquoted ImagePath)
+  ansible.windows.win_command: >-
+    sc.exe create {{ ews_lpe_service_name }}
+    binPath= {{ ews_lpe_service_exe }}
+    start= auto
+    obj= LocalSystem
+    DisplayName= "{{ ews_lpe_service_display_name }}"
+  when:
+    - not ansible_check_mode
+    - ews_lpe_sc_query.rc != 0
+
+- name: Set SecretConEwsSync service description
+  ansible.windows.win_command: >-
+    sc.exe description {{ ews_lpe_service_name }}
+    "{{ ews_lpe_service_description }}"
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Query SecretConEwsSync service runtime state
+  ansible.windows.win_service:
+    name: "{{ ews_lpe_service_name }}"
+  register: ews_lpe_svc_state
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Start SecretConEwsSync service when not running
+  ansible.windows.win_service:
+    name: "{{ ews_lpe_service_name }}"
+    start_mode: auto
+    state: started
+  register: ews_lpe_start_result
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - ews_lpe_svc_state.exists | default(false)
+    - ews_lpe_svc_state.state | default('stopped') != 'running'
+
+- name: Ensure SecretConEwsSync is running after LPE reset
+  ansible.windows.win_service:
+    name: "{{ ews_lpe_service_name }}"
+    start_mode: auto
+    state: started
+  when: not ansible_check_mode
+  tags: [ews_lpe_reset]
+
+- name: Warn when SecretConEwsSync could not be started
+  ansible.builtin.debug:
+    msg: >-
+      SecretConEwsSync start returned failure (LPE preconditions may still be valid).
+      msg={{ ews_lpe_start_result.msg | default('n/a') }}
+  when:
+    - not ansible_check_mode
+    - ews_lpe_start_result is defined
+    - ews_lpe_start_result.failed | default(false)
+
+- name: Allow BUILTIN Users to query SecretConEwsSync service configuration (sc qc)
+  ansible.windows.win_command: >-
+    sc.exe sdset {{ ews_lpe_service_name }}
+    "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;RP;;;BU)"
+  register: ews_lpe_sdset
+  changed_when: "'SetServiceObjectSecurity SUCCESS' in ews_lpe_sdset.stdout"
+  when: not ansible_check_mode
+
+- name: Grant BUILTIN Users read on SecretConEwsSync service key (patrick can sc qc / wmic)
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $path = 'HKLM:\SYSTEM\CurrentControlSet\Services\{{ ews_lpe_service_name }}'
+      $acl = Get-Acl -Path $path
+      $rights = [System.Security.AccessControl.RegistryRights]'ReadKey, QueryValues, EnumerateSubKeys'
+      $rule = New-Object System.Security.AccessControl.RegistryAccessRule(
+          'BUILTIN\Users',
+          $rights,
+          [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+          [System.Security.AccessControl.PropagationFlags]::None,
+          [System.Security.AccessControl.AccessControlType]::Allow
+      )
+      $already = $false
+      foreach ($r in $acl.GetAccessRules($true, $false, [System.Security.Principal.NTAccount])) {
+          if ($r.IdentityReference.Value -eq 'BUILTIN\Users' -and
+              ($r.RegistryRights -band $rights) -eq $rights) {
+              $already = $true
+              break
+          }
+      }
+      if (-not $already) {
+          $acl.AddAccessRule($rule)
+          Set-Acl -Path $path -AclObject $acl
+          $Ansible.Changed = $true
+      } else {
+          $Ansible.Changed = $false
+      }
+  when: not ansible_check_mode
+
+- name: Assert service ImagePath is unquoted and contains a space
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $imagePath = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\{{ ews_lpe_service_name }}' -Name ImagePath).ImagePath
+      if ($imagePath -match '^".*"$') { throw "ImagePath is quoted: $imagePath" }
+      if ($imagePath -notmatch '\s') { throw "ImagePath has no space: $imagePath" }
+      $Ansible.Changed = $false
+  when: not ansible_check_mode

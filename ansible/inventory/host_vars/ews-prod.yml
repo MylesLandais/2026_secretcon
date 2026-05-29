@@ -1,0 +1,29 @@
+---
+# Live EWS at 192.168.60.109 (Proxmox VMID 109). Mirror of the
+# proxmox_bootstrap_env locals in infrastructure/packer/ews/ews-shared.pkr.hcl.
+# Anything that diverges between qemu (10.0.2.2) and proxmox (192.168.61.10)
+# stays at group_vars or per-host scope.
+
+# Connection profile. These also live in group_vars/windows.yml but
+# ansible-core 2.20's nested-group YAML inventory plugin does not always
+# materialize parent-group vars to the play executor (ad-hoc commands
+# resolve fine, ansible-playbook does not). Pinning them at host scope
+# guarantees ansible_user is set to Administrator at play time.
+ansible_connection: ssh
+ansible_port: 22
+ansible_user: Administrator
+ansible_shell_type: powershell
+ansible_password: "{{ lookup('env', 'ANSIBLE_ADMIN_PASSWORD') | default('packer', true) }}"
+ansible_become_method: runas
+
+# UltraVNC overrides for live EWS (VMID 109). MSI-time defaults live in
+# roles/ultravnc/defaults/main.yml; only host-specific deltas belong here.
+
+# Wazuh agent group for EWS. Mirrors the -Group "ews" arg in
+# Install-SecretConWazuhAgent.
+wazuh_agent_group: "ews"
+
+# Flag values are loaded from the host environment so they stay out of
+# git. Match SECRETCON_USER_FLAG / SECRETCON_ROOT_FLAG from .env.
+ews_user_flag: "{{ lookup('env', 'SECRETCON_USER_FLAG') | default('crit-low-priv-patrick', true) }}"
+ews_root_flag: "{{ lookup('env', 'SECRETCON_ROOT_FLAG') | default('crit-root-system-privs', true) }}"

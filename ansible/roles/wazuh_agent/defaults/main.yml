@@ -1,0 +1,25 @@
+---
+# Wazuh agent role — ports Install-SecretConWazuhAgent (psm-004).
+
+wazuh_agent_install_dir: 'C:\secretcon'
+wazuh_agent_msi_name: "wazuh-agent-{{ wazuh_agent_version }}-1.msi"
+wazuh_agent_msi_path: "C:\\{{ wazuh_agent_msi_name }}"
+wazuh_agent_msi_url: "https://packages.wazuh.com/4.x/windows/{{ wazuh_agent_msi_name }}"
+
+# From group_vars/all.yml unless overridden per host/group.
+# wazuh_manager: ...
+# wazuh_agent_version: ...
+
+# Per-playbook group assignment (ews, cysvuln, asrep, dc-primary, dc-replica).
+wazuh_agent_group: ews
+
+wazuh_agent_service_name: WazuhSvc
+wazuh_agent_install_root: 'C:\Program Files (x86)\ossec-agent'
+wazuh_agent_local_options: "{{ wazuh_agent_install_root }}\\local_internal_options.conf"
+wazuh_agent_ossec_log: "{{ wazuh_agent_install_root }}\\ossec.log"
+
+# Required for tvnserver.log <command> tailer (shared/ews/agent.conf).
+wazuh_agent_enable_remote_commands: true
+
+wazuh_agent_enrollment_timeout_seconds: 60
+wazuh_agent_enrollment_optional: "{{ lookup('env', 'WAZUH_AGENT_ENROLLMENT_OPTIONAL') | default(false, true) | bool }}"

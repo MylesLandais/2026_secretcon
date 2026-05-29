@@ -1,0 +1,60 @@
+---
+- name: Build net0 interface string
+  ansible.builtin.set_fact:
+    proxmox_kvm_net0: >-
+      {{ proxmox_kvm_net_model }},bridge={{ proxmox_kvm_bridge }}{% if proxmox_kvm_firewall | bool %},firewall=1{% endif %}
+
+- name: Converge Proxmox QEMU VM settings (no agent flag)
+  community.proxmox.proxmox_kvm:
+    api_host: "{{ proxmox_api_host }}"
+    api_user: "{{ proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_timeout: "{{ proxmox_api_timeout }}"
+    node: "{{ proxmox_node }}"
+    vmid: "{{ proxmox_kvm_vmid }}"
+    update: "{{ proxmox_kvm_update | bool }}"
+    memory: "{{ proxmox_kvm_memory | int }}"
+    cores: "{{ proxmox_kvm_cores | int }}"
+    cpu: "{{ proxmox_kvm_cpu }}"
+    net:
+      net0: "{{ proxmox_kvm_net0 }}"
+  register: proxmox_kvm_result
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - not (proxmox_kvm_enable_agent | bool)
+
+- name: Converge Proxmox QEMU VM settings (with agent)
+  community.proxmox.proxmox_kvm:
+    api_host: "{{ proxmox_api_host }}"
+    api_user: "{{ proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_timeout: "{{ proxmox_api_timeout }}"
+    node: "{{ proxmox_node }}"
+    vmid: "{{ proxmox_kvm_vmid }}"
+    update: "{{ proxmox_kvm_update | bool }}"
+    memory: "{{ proxmox_kvm_memory | int }}"
+    cores: "{{ proxmox_kvm_cores | int }}"
+    cpu: "{{ proxmox_kvm_cpu }}"
+    agent: "{{ proxmox_kvm_agent }}"
+    net:
+      net0: "{{ proxmox_kvm_net0 }}"
+  register: proxmox_kvm_result
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - proxmox_kvm_enable_agent | bool
+
+- name: Reboot VM after hypervisor network change
+  community.proxmox.proxmox_kvm:
+    api_host: "{{ proxmox_api_host }}"
+    api_user: "{{ proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_timeout: "{{ proxmox_api_timeout }}"
+    node: "{{ proxmox_node }}"
+    vmid: "{{ proxmox_kvm_vmid }}"
+    state: restarted
+  when:
+    - proxmox_kvm_reboot_on_change | bool
+    - proxmox_kvm_result is changed
+    - not ansible_check_mode

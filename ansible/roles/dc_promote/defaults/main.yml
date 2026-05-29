@@ -1,0 +1,17 @@
+---
+# Helium DC forest (heliumsupply.local) — parallel track to AS-REP (dc-003–004).
+
+dc_promote_install_dir: 'C:\secretcon'
+dc_promote_marker: "{{ dc_promote_install_dir }}\\promoted.marker"
+dc_promote_log: "{{ dc_promote_install_dir }}\\promote.log"
+
+dc_role: "{{ lookup('env', 'DC_ROLE') | default('primary', true) }}"
+dc_ad_domain: "{{ lookup('env', 'AD_DOMAIN') | default('heliumsupply.local', true) }}"
+dc_ad_netbios: "{{ lookup('env', 'AD_NETBIOS') | default('HELIUM', true) }}"
+dc_ad_safemode_password: "{{ lookup('env', 'AD_SAFEMODE_PASSWORD') }}"
+
+# Replica-only
+dc_admin_password: "{{ lookup('env', 'AD_ADMIN_PASSWORD') }}"
+dc_replica_source_dc: "{{ lookup('env', 'REPLICA_SOURCE_DC') }}"
+
+dc_promotion_delegate_powershell: true

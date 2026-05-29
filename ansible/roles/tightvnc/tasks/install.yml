@@ -1,0 +1,136 @@
+---
+# Sub-flow (a): MSI-time settings. TightVNC honors LogLevel, SaveLogToAllUsersPath,
+# and the VNC password ONLY at MSI install time on 2.8.87.
+#
+# Reinstall trigger: service absent, LogLevel drift, SaveLogToAllUsersPath proxy,
+# or Password REG_BINARY drift vs vnc-cred-tool encode output.
+#
+# encode_password.yml must run before this file.
+
+- name: Ensure SecretCon install directory exists
+  ansible.windows.win_file:
+    path: "{{ tightvnc_install_dir }}"
+    state: directory
+
+- name: Read current tvnserver service state
+  ansible.windows.win_service:
+    name: "{{ tightvnc_service_name }}"
+  register: tightvnc_service_state
+  failed_when: false
+
+- name: Read current TightVNC LogLevel registry value
+  ansible.windows.win_reg_stat:
+    path: "{{ tightvnc_reg_path }}"
+    name: LogLevel
+  register: tightvnc_loglevel_reg
+  failed_when: false
+
+- name: Read current TightVNC Password registry blob
+  ansible.windows.win_reg_stat:
+    path: "{{ tightvnc_reg_path }}"
+    name: Password
+  register: tightvnc_password_reg
+  failed_when: false
+
+- name: Stat C:\ProgramData\TightVNC\ as proxy for SaveLogToAllUsersPath
+  ansible.windows.win_stat:
+    path: 'C:\ProgramData\TightVNC'
+  register: tightvnc_alluserspath_stat
+  failed_when: false
+
+- name: Normalize live Password registry blob to hex string
+  ansible.windows.win_shell: |
+    $bytes = (Get-ItemProperty -LiteralPath '{{ tightvnc_reg_path }}' -Name Password -ErrorAction Stop).Password
+    ($bytes | ForEach-Object { '{0:X2}' -f [int]$_ }) -join ''
+  register: tightvnc_password_reg_hex_cmd
+  changed_when: false
+  when: tightvnc_password_reg.exists | default(false)
+
+- name: Capture normalized Password registry hex
+  ansible.builtin.set_fact:
+    tightvnc_password_reg_hex_nodash: "{{ tightvnc_password_reg_hex_cmd.stdout | trim }}"
+  when: tightvnc_password_reg.exists | default(false)
+
+- name: Decide whether the MSI needs to be re-run
+  ansible.builtin.set_fact:
+    tightvnc_needs_reinstall: >-
+      {{
+        (tightvnc_force_reinstall | bool)
+        or (not (tightvnc_service_state.exists | default(false)))
+        or ((tightvnc_loglevel_reg.exists | default(false)) and
+            (tightvnc_loglevel_reg.value | default(-1) | int) != (tightvnc_loglevel | int))
+        or (not (tightvnc_loglevel_reg.exists | default(false)))
+        or (not (tightvnc_alluserspath_stat.stat.exists | default(false)))
+        or (not (tightvnc_password_reg.exists | default(false)))
+        or (
+          (tightvnc_password_reg_hex_nodash | default('') | upper)
+          != (tightvnc_password_hex_nodash | upper)
+        )
+      }}
+
+- name: Surface MSI-time-drift verdict for --check --diff visibility
+  ansible.builtin.debug:
+    msg: >-
+      tightvnc_needs_reinstall={{ tightvnc_needs_reinstall }};
+      service_present={{ tightvnc_service_state.exists | default(false) }};
+      current_LogLevel={{ tightvnc_loglevel_reg.value | default('absent') }};
+      desired_LogLevel={{ tightvnc_loglevel }};
+      alluserspath_dir_present={{ tightvnc_alluserspath_stat.stat.exists | default(false) }};
+      password_reg_hex={{ tightvnc_password_reg_hex_nodash | default('absent') }};
+      expected_password_hex={{ tightvnc_password_hex_nodash }}
+
+- name: Stage TightVNC MSI (download if not already present)
+  ansible.windows.win_get_url:
+    url: "{{ tightvnc_msi_url }}"
+    dest: "{{ tightvnc_msi_dest }}"
+    force: false
+  when:
+    - tightvnc_needs_reinstall | bool
+    - not ansible_check_mode
+
+- name: Uninstall existing TightVNC before reinstall (drops VNC briefly)
+  ansible.windows.win_package:
+    path: "{{ tightvnc_msi_dest }}"
+    state: absent
+    arguments: /quiet /norestart
+  when:
+    - tightvnc_needs_reinstall | bool
+    - tightvnc_service_state.exists | default(false)
+    - not ansible_check_mode
+
+- name: Install TightVNC via msiexec with quoted MSI-time properties
+  ansible.windows.win_shell: |
+    $vncPassword = $env:TIGHTVNC_INSTALL_PASSWORD
+    $exit = (Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" -Wait -PassThru -ArgumentList @(
+      '/i', '{{ tightvnc_msi_dest }}',
+      '/quiet', '/norestart',
+      'ADDLOCAL=Server',
+      'SERVER_REGISTER_AS_SERVICE=1',
+      'SERVER_ADD_FIREWALL_EXCEPTION=1',
+      'SET_USEVNCAUTHENTICATION=1',
+      'VALUE_OF_USEVNCAUTHENTICATION=1',
+      'SET_PASSWORD=1',
+      "VALUE_OF_PASSWORD=$vncPassword",
+      'SET_USECONTROLAUTHENTICATION=1',
+      'VALUE_OF_USECONTROLAUTHENTICATION={{ tightvnc_use_control_authentication | int }}',
+      'SET_LOGLEVEL=1',
+      'VALUE_OF_LOGLEVEL={{ tightvnc_loglevel }}',
+      'SET_SAVELOGTOALLUSERSPATH=1',
+      'VALUE_OF_SAVELOGTOALLUSERSPATH={{ tightvnc_save_log_to_all_users_path }}'
+    )).ExitCode
+    if ($exit -ne 0) { throw ('msiexec failed with exit code ' + $exit) }
+  environment:
+    TIGHTVNC_INSTALL_PASSWORD: "{{ tightvnc_password }}"
+  register: tightvnc_msi_install
+  changed_when: true
+  when:
+    - tightvnc_needs_reinstall | bool
+    - not ansible_check_mode
+  notify: "tightvnc service config changed"
+
+- name: Record that MSI install ran this play
+  ansible.builtin.set_fact:
+    tightvnc_msi_ran_this_play: true
+  when:
+    - tightvnc_msi_install is defined
+    - not (tightvnc_msi_install.skipped | default(false))

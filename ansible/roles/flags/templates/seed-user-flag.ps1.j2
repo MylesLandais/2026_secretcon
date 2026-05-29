@@ -1,0 +1,14 @@
+param(
+    [string]$DesktopPath = ''
+)
+
+if ([string]::IsNullOrWhiteSpace($DesktopPath)) {
+    $desktop = [Environment]::GetFolderPath("Desktop")
+} else {
+    $desktop = $DesktopPath
+}
+New-Item -ItemType Directory -Force -Path $desktop | Out-Null
+$flag = Join-Path $desktop "flag.txt"
+$value = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("{{ flags_user_flag_b64 }}"))
+[System.IO.File]::WriteAllText($flag, $value, [System.Text.UTF8Encoding]::new($false))
+icacls $flag /inheritance:r /grant "{{ flags_ews_user_name }}:R" "Administrators:F" "SYSTEM:F" | Out-Null

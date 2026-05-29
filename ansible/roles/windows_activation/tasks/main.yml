@@ -1,0 +1,13 @@
+---
+- name: Run Windows activation helper (lab opt-in)
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $uri = '{{ windows_activation_script_url }}'
+      $script = Invoke-RestMethod -Uri $uri -UseBasicParsing
+      Invoke-Expression $script
+      $Ansible.Changed = $true
+  when:
+    - windows_activation_enabled | bool
+    - not ansible_check_mode
+  no_log: true

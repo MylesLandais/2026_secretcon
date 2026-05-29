@@ -1,0 +1,22 @@
+---
+# Transport defaults for Windows hosts. SSH (OpenSSH-on-Windows) matches
+# every existing Packer builder communicator (see ews-shared.pkr.hcl,
+# win10-ews-hyperv.pkr.hcl, win10-ews-vmware.pkr.hcl, hyperv-cysvuln.pkr.hcl,
+# vmware-cysvuln.pkr.hcl). Keep SSH everywhere; pywinrm stays in
+# flake.nix only as a forward-compatibility hedge.
+ansible_connection: ssh
+ansible_port: 22
+ansible_user: Administrator
+ansible_shell_type: powershell
+
+# Live EWS VMID 109 was baked from 53ae202 (2026-05-13) before the
+# shared-admin pivot landed, so the Administrator password is still
+# "packer" (the autounattend default). Step 3 of the migration order
+# will converge it to SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD; until
+# then, set ANSIBLE_ADMIN_PASSWORD=packer in the environment.
+ansible_password: "{{ lookup('env', 'ANSIBLE_ADMIN_PASSWORD') | default('packer', true) }}"
+
+# OpenSSH-on-Windows tolerates pipelining but not ControlPersist over
+# long idle gaps; ansible.cfg already tunes ssh_args. Force the
+# powershell shell so win_* modules behave predictably.
+ansible_become_method: runas

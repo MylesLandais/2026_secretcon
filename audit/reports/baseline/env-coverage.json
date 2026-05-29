@@ -1,0 +1,260 @@
+{
+  "generated": "2026-05-27T13:45:42Z",
+  "documented_count": 48,
+  "referenced_count": 505,
+  "undocumented": {
+    "ADMIN_PASSWORD": [
+      "scripts/proxmox/winrm_bootstrap_asrep.py",
+      "scripts/proxmox/winrm_bootstrap.py"
+    ],
+    "ADMIN_USER": [
+      "scripts/observability/vnc-public-attack.sh",
+      "scripts/observability/opnsense-vnc-challenge.sh"
+    ],
+    "AD_CHAIN8": [
+      "scripts/validate-chain8.sh",
+      "scripts/validate-chain8.sh",
+      "scripts/validate-chain8.sh",
+      "scripts/validate-chain8.sh",
+      "scripts/validate-chain8.sh"
+    ],
+    "AGENT_CONF_SRC": [
+      "scripts/proxmox/sync-wazuh-rules.sh"
+    ],
+    "AGENT_GROUP": [
+      "scripts/wazuh-export-dataset.sh",
+      "scripts/wazuh-export-dataset.sh",
+      "scripts/wazuh-export-dataset.sh",
+      "scripts/proxmox/sync-wazuh-rules.sh",
+      "scripts/proxmox/sync-wazuh-rules.sh"
+    ],
+    "AGENT_IP": [
+      "scripts/observability-loop.sh",
+      "scripts/observability/baseline-snapshot-asrep.sh",
+      "scripts/observability/run-baseline-tour.sh",
+      "scripts/observability/baseline-snapshot.sh"
+    ],
+    "ALERTS": [
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh"
+    ],
+    "ALERTS_JSON": [
+      "scripts/observability/opnsense-vnc-challenge.sh",
+      "scripts/observability/opnsense-vnc-challenge.sh",
+      "scripts/observability/opnsense-vnc-challenge.sh",
+      "scripts/observability/opnsense-vnc-challenge.sh",
+      "scripts/observability/opnsense-vnc-challenge.sh"
+    ],
+    "ALERTS_LINES": [
+      "scripts/wazuh-export-dataset.sh"
+    ],
+    "ALERTS_OUT": [
+      "scripts/wazuh-drain-alerts.sh"
+    ],
+    "ALERT_COUNT": [
+      "scripts/observability-loop-asrep.sh",
+      "scripts/wazuh-drain-alerts.sh",
+      "scripts/observability-loop.sh",
+      "scripts/observability-loop.sh"
+    ],
+    "ALLOWED_CIDRS": [
+      "scripts/proxmox/enable-wazuh-replay-listener.sh",
+      "scripts/proxmox/enable-wazuh-replay-listener.sh"
+    ],
+    "ALLOWED_XML": [
+      "scripts/proxmox/enable-wazuh-replay-listener.sh"
+    ],
+    "ANALYSIS_DIR": [
+      "scripts/observability/vnc-public-attack.sh",
+      "scripts/observability/vnc-public-attack.sh",
+      "scripts/observability/vnc-public-attack.sh",
+      "scripts/observability/vnc-public-attack.sh",
+      "scripts/observability/vnc-public-attack.sh"
+    ],
+    "API_HOST_FINAL": [
+      "scripts/wazuh-export-dataset.sh"
+    ],
+    "API_RULES_PATH": [
+      "scripts/proxmox/opnsense-apply-config.sh"
+    ],
+    "ARCHIVES_OUT": [
+      "scripts/wazuh-drain-alerts.sh"
+    ],
+    "ARCHIVE_COUNT": [
+      "scripts/wazuh-drain-alerts.sh"
+    ],
+    "ARCH_LINES": [
+      "scripts/wazuh-export-dataset.sh"
+    ],
+    "ARKIME_BASENAME": [
+      "scripts/observability/vnc-public-attack.sh",
+      "scripts/observability/vnc-public-attack.sh"
+    ],
+    "ARKIME_COUNT_JSON": [
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-vnc-public-attack.sh",
+      "scripts/validate/validate-vnc-public-attack.sh"
+    ],
+    "ARKIME_OK": [
+      "scripts/proxmox/reproduce-ews-prod-proof.sh",
+      "scripts/proxmox/reproduce-ews-prod-proof.sh"
+    ],
+    "ARKIME_PCAP_DIR": [
+      "scripts/observability/vnc-adversary-emulation.sh",
+      "scripts/observability/vnc-adversary-emulation.sh",
+      "scripts/observability/vnc-adversary-emulation.sh"
+    ],
+    "ARKIME_STAGED_PATH": [
+      "scripts/observability/vnc-pcap-proof.sh",
+      "scripts/observability/vnc-pcap-proof.sh",
+      "scripts/observability/vnc-pcap-proof.sh",
+      "scripts/observability/vnc-pcap-proof.sh",
+      "scripts/observability/vnc-pcap-proof.sh"
+    ],
+    "ARKIME_URL": [
+      "scripts/observability/vnc-public-attack.sh",
+      "scripts/observability/vnc-public-attack.sh"
+    ],
+    "ARK_COUNT": [
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-vnc-public-attack.sh",
+      "scripts/validate/validate-vnc-public-attack.sh",
+      "scripts/validate/validate-vnc-public-attack.sh"
+    ],
+    "ARTIFACT_ROOT": [
+      "scripts/observability/vnc-replay-on-deploy.sh",
+      "scripts/observability/vnc-replay-on-deploy.sh",
+      "scripts/proxmox/rollback-vmbr1-mirror.sh",
+      "scripts/proxmox/rollback-vmbr1-mirror.sh",
+      "scripts/proxmox/rollback-vmbr1-mirror.sh"
+    ],
+    "ART_DIR": [
+      "scripts/fetch-cysvuln-artifacts.sh",
+      "scripts/fetch-cysvuln-artifacts.sh",
+      "scripts/fetch-cysvuln-artifacts.sh",
+      "scripts/fetch-cysvuln-artifacts.sh",
+      "scripts/fetch-cysvuln-artifacts.sh"
+    ],
+    "AR_TSV": [
+      "scripts/validate/validate-vnc-public-attack.sh",
+      "scripts/validate/validate-vnc-public-attack.sh"
+    ],
+    "ASREP_KDC_PORT": [
+      "scripts/asrep-getnpusers.py"
+    ],
+    "ASREP_PASSWORD": [
+      "scripts/validate-asrep.sh",
+      "scripts/validate-asrep.sh",
+      "scripts/validate-asrep.sh",
+      "scripts/observability/ews-asrep-pivot.sh",
+      "scripts/observability/ews-asrep-pivot.sh"
+    ],
+    "ASREP_USER": [
+      "scripts/validate-asrep.sh",
+      "scripts/validate-asrep.sh",
+      "scripts/validate-asrep.sh",
+      "scripts/validate-asrep.sh",
+      "scripts/validate-asrep.sh"
+    ],
+    "ATTEMPTS_FILE": [
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh"
+    ],
+    "ATTEMPT_COUNT": [
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh",
+      "scripts/validate/validate-vnc-public-attack.sh",
+      "scripts/validate/validate-vnc-public-attack.sh"
+    ],
+    "AUDITPOL_OUT": [
+      "scripts/proxmox/probe-ews.sh",
+      "scripts/proxmox/probe-ews.sh"
+    ],
+    "BASE": [
+      "scripts/proxmox/opnsense-apply-config.sh",
+      "scripts/proxmox/opnsense-apply-config.sh",
+      "scripts/proxmox/opnsense-apply-config.sh",
+      "scripts/proxmox/opnsense-apply-config.sh",
+      "scripts/proxmox/opnsense-apply-config.sh"
+    ],
+    "BOOTSTRAP": [
+      "scripts/proxmox/deploy-wazuh-siem.sh",
+      "scripts/proxmox/deploy-arkime-capture.sh"
+    ],
+    "BOOT_SLEEP": [
+      "scripts/run-chain8-lab.sh"
+    ],
+    "BPF": [
+      "scripts/proxmox/opnsense-export-pcap.sh",
+      "scripts/proxmox/opnsense-export-pcap.sh"
+    ],
+    "BRIDGE": [
+      "scripts/chain8-bridge-down.sh",
+      "scripts/run-chain8-lab.sh",
+      "scripts/chain8-bridge-init.sh",
+      "scripts/chain8-bridge-init.sh",
+      "scripts/chain8-bridge-init.sh"
+    ],
+    "C1_HTTP_PORT": [
+      "scripts/ad-chain8/capture-attack-faq.sh",
+      "scripts/ad-chain8/capture-attack-faq.sh",
+      "scripts/ad-chain8/capture-attack-faq.sh"
+    ],
+    "C1_IP": [
+      "scripts/ad-chain8/capture-attack-faq.sh",
+      "scripts/ad-chain8/capture-attack-faq.sh",
+      "scripts/ad-chain8/capture-attack-faq.sh",
+      "scripts/ad-chain8/capture-attack-faq.sh"
+    ],
+    "C1_NMAP_PORTS": [
+      "scripts/ad-chain8/capture-attack-faq.sh"
+    ],
+    "C2_IP": [
+      "scripts/ad-chain8/capture-attack-faq.sh",
+      "scripts/ad-chain8/capture-attack-faq.sh",
+      "scripts/ad-chain8/capture-attack-faq.sh",
+      "scripts/ad-chain8/capture-attack-faq.sh"
+    ],
+    "C2_RDP_PORT": [
+      "scripts/ad-chain8/capture-attack-faq.sh"
+    ],
+    "CACHE_DIR": [
+      "scripts/observability/fetch-rubeus.sh"
+    ],
+    "CACHE_PATH": [
+      "scripts/observability/fetch-rubeus.sh",
+      "scripts/observability/fetch-rubeus.sh",
+      "scripts/observability/fetch-rubeus.sh",
+      "scripts/observability/fetch-rubeus.sh",
+      "scripts/observability/fetch-rubeus.sh"
+    ],
+    "CAMPAIGN_CSV": [
+      "scripts/observability/stress-campaign.sh",
+      "scripts/observability/stress-campaign-asrep.sh"
+    ],
+    "CAND": [
+      "scripts/proxmox/disable-vmbr1-mirror.sh",
+      "scripts/proxmox/disable-vmbr1-mirror.sh"
+    ],
+    "CAP_PID": [
+      "scripts/observability/opnsense-vnc-challenge.sh",
+      "scripts/observability/opnsense-vnc-challenge.sh",
+      "scripts/observability/opnsense-vnc-challenge.sh",
+      "scripts/observability/opnsense-vnc-challenge.sh",
+      "scripts/observability/opnsense-vnc-challenge.sh"
+    ]
+  },
+  "documented_unused": [
+    "ANSIBLE_ADMIN_PASSWORD",
+    "EWS_PROD_HOST",
+    "EWS_TARGET",
+    "JOE_USER",
+    "PROXMOX_URL",
+    "PROXMOX_USERNAME",
+    "VNC_PW"
+  ]
+}

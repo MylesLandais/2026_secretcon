@@ -1,0 +1,9 @@
+---
+# Reload Sysmon's running config without uninstalling the service. Sysmon64 -c
+# is non-disruptive — the existing event channel survives, the kernel filter
+# is updated atomically. Triggered when win_copy reports the config file
+# changed.
+- name: reload sysmon config
+  ansible.windows.win_command: "{{ sysmon_binary_exe }} -accepteula -c {{ sysmon_install_dir }}\\{{ sysmon_config_dest_filename }}"
+  changed_when: true
+  listen: "sysmon config changed"

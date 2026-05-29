@@ -1,12 +1,3 @@
-packer {
-  required_plugins {
-    qemu = {
-      version = ">= 1.1.0"
-      source  = "github.com/hashicorp/qemu"
-    }
-  }
-}
-
 variable "virtio_iso" {
   type    = string
   default = "file:///home/warby/Downloads/virtio-win.iso"
@@ -72,6 +63,19 @@ build {
   provisioner "powershell" {
     script           = local.bootstrap_script
     environment_vars = local.qemu_bootstrap_env
+  }
+
+  provisioner "ansible" {
+    playbook_file      = local.ansible_playbook
+    ansible_env_vars   = concat(local.qemu_bootstrap_env, ["ANSIBLE_CONFIG=${local.ansible_cfg}"])
+    inventory_file_template = local.ansible_inventory_template
+    inventory_directory     = "${local.repo_root}/ansible/inventory"
+    user               = local.ssh_username
+    use_proxy          = false
+    extra_arguments = [
+      "--extra-vars",
+      "ansible_shell_type=powershell wazuh_manager=10.0.2.2",
+    ]
   }
 
   provisioner "powershell" {

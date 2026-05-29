@@ -25,7 +25,7 @@ function Find-ProvisionFile {
 function Install-SecretConSysmon {
     param(
         [string]$ConfigName = "sysmonconfig.xml",
-        [string]$ExpectedSha = $(if ($env:SYSMON_CONFIG_SHA256) { $env:SYSMON_CONFIG_SHA256 } else { "055febc600e6d7448cdf3812307275912927a62b1f94d0d933b64b294bc87162" }),
+        [string]$ExpectedSha = $(if ($env:SYSMON_CONFIG_SHA256) { $env:SYSMON_CONFIG_SHA256 } else { "747fe516fb5319962106081ae2ce30f769ad2e4e99db7120ccda726c290b12eb" }),
         [string]$InstallDir = "C:\secretcon"
     )
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -58,6 +58,24 @@ function Install-SecretConWazuhAgent {
     $msi = "C:\wazuh-agent-$Version-1.msi"
     Invoke-WebRequest -Uri "https://packages.wazuh.com/4.x/windows/wazuh-agent-$Version-1.msi" -OutFile $msi
     Start-Process msiexec.exe -ArgumentList "/i $msi /q WAZUH_MANAGER=$Manager WAZUH_AGENT_GROUP=$Group" -Wait
+
+    # Opt this agent in to manager-pushed <command> localfiles. Wazuh
+    # rejects them by default (it logs "Remote commands are not accepted
+    # from the manager") because they are an RCE primitive if the manager
+    # is compromised. The opt-in MUST live in local_internal_options.conf
+    # on the agent itself — it cannot be pushed via shared agent.conf for
+    # exactly that reason. We need it for the tvnserver.log tailer (see
+    # shared/ews/agent.conf and rule 100801) since TightVNC's exclusive
+    # file lock prevents the built-in logcollector from tailing the log.
+    $localOpts = "C:\Program Files (x86)\ossec-agent\local_internal_options.conf"
+    if (-not (Test-Path -LiteralPath $localOpts)) {
+        Set-Content -LiteralPath $localOpts -Value "" -Encoding ASCII
+    }
+    $existing = Get-Content -LiteralPath $localOpts -ErrorAction SilentlyContinue
+    if ($existing -notmatch '^\s*logcollector\.remote_commands\s*=\s*1') {
+        Add-Content -LiteralPath $localOpts -Value "logcollector.remote_commands=1"
+    }
+
     Start-Service WazuhSvc
 
     $ossecLog = "C:\Program Files (x86)\ossec-agent\ossec.log"

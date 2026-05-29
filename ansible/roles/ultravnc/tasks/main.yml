@@ -1,0 +1,48 @@
+---
+# UltraVNC role — Chocolatey install, known-good apply script, live verify.
+#
+# Hot iterate (~30s):
+#   ./scripts/proxmox/hot-patch-ews-vnc.sh --ews-host <ip>
+#   ansible-playbook playbooks/ews.yml --tags ultravnc_hot -e ansible_host=<ip>
+#
+# Declarative full converge:
+#   ./scripts/proxmox/converge-ews.sh --ews-host <ip>
+#   ansible-playbook playbooks/ews.yml --tags ultravnc -e ansible_host=<ip>
+
+# --- Hot path (encode + apply + verify only) ---
+- ansible.builtin.import_tasks: encode_password.yml
+  tags: [ultravnc_hot]
+
+- ansible.builtin.import_tasks: hot_apply.yml
+  tags: [ultravnc_hot]
+
+- ansible.builtin.import_tasks: verify_auth.yml
+  tags: [ultravnc_hot, ultravnc_verify]
+
+# --- Declarative full path ---
+- ansible.builtin.import_tasks: preflight.yml
+  tags: [ultravnc, ultravnc_preflight]
+
+- ansible.builtin.import_tasks: encode_password.yml
+  tags: [ultravnc, ultravnc_password, ultravnc_install, ultravnc_service, ultravnc_verify]
+
+- ansible.builtin.import_tasks: remove_tightvnc.yml
+  tags: [ultravnc, ultravnc_remove_tightvnc, ultravnc_install]
+
+- ansible.builtin.import_tasks: install.yml
+  tags: [ultravnc, ultravnc_install]
+
+- ansible.builtin.import_tasks: set_password.yml
+  tags: [ultravnc, ultravnc_service, ultravnc_password]
+
+- ansible.builtin.import_tasks: service_config.yml
+  tags: [ultravnc, ultravnc_service]
+
+- ansible.builtin.import_tasks: observability.yml
+  tags: [ultravnc, ultravnc_observability]
+
+- ansible.builtin.import_tasks: verify_auth.yml
+  tags: [ultravnc, ultravnc_verify]
+
+- ansible.builtin.import_tasks: verify_state.yml
+  tags: [ultravnc, ultravnc_verify, ultravnc_state]

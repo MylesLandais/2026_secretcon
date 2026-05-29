@@ -1,0 +1,31 @@
+---
+# Stop and remove legacy TightVNC so port 5900 is owned by UltraVNC.
+
+- name: Stop legacy TightVNC service before UltraVNC takeover
+  ansible.windows.win_service:
+    name: "{{ ultravnc_tightvnc_service_name }}"
+    state: stopped
+    start_mode: disabled
+  failed_when: false
+  when:
+    - ultravnc_remove_tightvnc | bool
+    - not ansible_check_mode
+
+- name: Uninstall TightVNC MSI when present
+  ansible.windows.win_package:
+    path: "{{ ultravnc_tightvnc_msi_path }}"
+    state: absent
+    arguments: /quiet /norestart
+  failed_when: false
+  when:
+    - ultravnc_remove_tightvnc | bool
+    - not ansible_check_mode
+
+- name: Ensure legacy TightVNC service is absent
+  ansible.windows.win_service:
+    name: "{{ ultravnc_tightvnc_service_name }}"
+    state: absent
+  failed_when: false
+  when:
+    - ultravnc_remove_tightvnc | bool
+    - not ansible_check_mode

@@ -48,6 +48,8 @@ Thumbs.db
 
 # Local build outputs and VM images
 artifacts/
+.tmp/
+tmp/
 *.qcow2
 *.vhdx
 *.ova
@@ -85,6 +87,11 @@ infrastructure/wazuh-docker/data/
 
 # SIEM capture loop run artifacts (randomized flags, drained alerts, etc.)
 artifacts/cysvuln/observability-loop/
+
+# Generated repo audit reports; keep committed baselines only.
+audit/reports/*
+!audit/reports/baseline/
+!audit/reports/baseline/**
 
 # AD Chain 8 — tracked on branch lab/ad-chain8 (see README "Experimental labs").
 # Not a SecretCon-original challenge; keep off-tree on main until it earns

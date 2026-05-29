@@ -12,9 +12,9 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-if [ -f .env ]; then
-  set -a; source .env; set +a
-fi
+# shellcheck source=scripts/lib/load_repo_env.sh
+. "${REPO_ROOT}/scripts/lib/load_repo_env.sh"
+load_repo_env "${REPO_ROOT}"
 
 # shellcheck source=../lib/chain_env.sh
 source "${REPO_ROOT}/scripts/lib/chain_env.sh"
@@ -107,27 +107,11 @@ ISO_REMOTE="/var/lib/vz/template/iso/secretcon-asrep-prov-${VMID}.iso"
 step "Uploading PROVISION ISO -> ${ISO_REMOTE}"
 pxscp "${ISO_LOCAL}" "root@${PROXMOX_HOST}:${ISO_REMOTE}" >/dev/null
 
-step "Tearing down any existing VMID ${VMID}"
-if pxssh "qm status ${VMID}" >/dev/null 2>&1; then
-  pxssh "qm stop ${VMID} 2>/dev/null || true; \
-         while qm status ${VMID} 2>/dev/null | grep -q running; do sleep 2; done; \
-         qm destroy ${VMID} --purge 1 --skiplock 1 2>/dev/null || true"
-fi
-
-step "Creating VMID ${VMID} (${VM_NAME})"
-pxssh "qm create ${VMID} \
-  --name ${VM_NAME} \
-  --memory 8192 --cores 2 --sockets 1 --cpu x86-64-v2-AES \
-  --machine pc-i440fx-10.1 --bios seabios --ostype win10 \
-  --scsihw virtio-scsi-single \
-  --boot 'order=ide0;ide2;net0' \
-  --net0 e1000,bridge=vmbr1,firewall=1 \
-  --ide2 local:iso/windows-server-2016.iso,media=cdrom \
-  --ide3 local:iso/secretcon-asrep-prov-${VMID}.iso,media=cdrom \
-  --ide0 local-lvm:40,backup=0,cache=writeback,discard=on"
-
-step "Starting VMID ${VMID}"
-pxssh "qm start ${VMID}"
+step "Creating VMID ${VMID} (${VM_NAME}) via Ansible"
+# shellcheck source=scripts/lib/ansible-proxmox-env.sh
+source "${REPO_ROOT}/scripts/lib/ansible-proxmox-env.sh"
+export VMID VM_NAME
+ansible_proxmox_run_playbook "${REPO_ROOT}" playbooks/proxmox/asrep.yml
 
 step "Discovering DHCP-assigned IP (timeout ${INSTALL_TIMEOUT_S}s)"
 MAC="$(pxssh "qm config ${VMID} | sed -n 's/^net0:[[:space:]]*e1000=\\([0-9A-Fa-f:]*\\).*$/\\1/p'")"

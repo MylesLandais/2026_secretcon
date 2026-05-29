@@ -1,0 +1,16 @@
+---
+# Winlogon AutoAdminLogon (ews-005, ews-015).
+
+autologon_winlogon_path: 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+
+autologon_user_name: patrick
+autologon_password: "{{ lookup('env', 'PATRICK_PW') | default('Changeme123!', true) }}"
+autologon_domain: "{{ ansible_hostname }}"
+
+autologon_enabled: true
+autologon_force: true
+
+# ews-005: create patrick before setting Winlogon keys
+autologon_create_user: true
+autologon_user_full_name: Patrick
+autologon_user_description: EWS Operator

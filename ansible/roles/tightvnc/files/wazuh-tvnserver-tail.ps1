@@ -1,0 +1,1 @@
+../../../../provisioning/powershell/assets/wazuh-tvnserver-tail.ps1

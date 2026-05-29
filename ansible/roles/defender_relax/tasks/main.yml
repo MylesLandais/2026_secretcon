@@ -1,0 +1,56 @@
+---
+# Defender exclusions + RTP off + startup re-apply (ews-013, ews-014).
+
+- name: Ensure SecretCon install directory exists
+  ansible.windows.win_file:
+    path: "{{ defender_relax_install_dir }}"
+    state: directory
+
+- name: Apply Defender exclusions and disable real-time protection
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Continue'
+      $changed = $false
+      {% for path in defender_relax_exclusion_paths %}
+      try {
+          Add-MpPreference -ExclusionPath '{{ path }}' -ErrorAction Stop
+          $changed = $true
+      } catch {}
+      {% endfor %}
+      {% for ext in defender_relax_exclusion_extensions %}
+      try {
+          Add-MpPreference -ExclusionExtension '{{ ext }}' -ErrorAction SilentlyContinue
+          $changed = $true
+      } catch {}
+      {% endfor %}
+      {% if defender_relax_disable_rtp | bool %}
+      try {
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+          $changed = $true
+      } catch {}
+      {% endif %}
+      $Ansible.Changed = $changed
+  when: not ansible_check_mode
+
+- name: Deploy Defender relax startup script
+  ansible.windows.win_copy:
+    dest: "{{ defender_relax_startup_script }}"
+    content: |
+      try {
+          Add-MpPreference -ExclusionPath "C:\Users\Public" -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionExtension ".exe" -ErrorAction SilentlyContinue
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+      } catch { }
+
+- name: Register SecretConDefenderRelax startup task
+  ansible.builtin.include_role:
+    name: windows_startup_task
+  vars:
+    windows_startup_task_name: "{{ defender_relax_startup_task_name }}"
+    windows_startup_task_script: "{{ defender_relax_startup_script }}"
+    windows_startup_task_description: Re-apply Defender relax settings at boot
+    windows_startup_task_trigger: startup
+    windows_startup_task_user: SYSTEM
+    windows_startup_task_run_level: highest
+    windows_startup_task_arguments: '-NoProfile -ExecutionPolicy Bypass -File "{{ defender_relax_startup_script }}"'
+  when: defender_relax_register_startup_task | bool

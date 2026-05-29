@@ -57,6 +57,7 @@ locals {
     "SECRETCON_USER_FLAG=${var.secretcon_user_flag}",
     "SECRETCON_ROOT_FLAG=${var.secretcon_root_flag}",
     "SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD=${var.secretcon_shared_local_admin_password != "" ? var.secretcon_shared_local_admin_password : "PizzaMan123!"}",
+    "WAZUH_AGENT_ENROLLMENT_OPTIONAL=true",
   ]
 
   proxmox_bootstrap_env = [
@@ -65,4 +66,11 @@ locals {
     "SECRETCON_ROOT_FLAG=${var.secretcon_root_flag}",
     "SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD=${var.secretcon_shared_local_admin_password != "" ? var.secretcon_shared_local_admin_password : "PizzaMan123!"}",
   ]
+
+  ansible_playbook = "${local.repo_root}/ansible/playbooks/ews.yml"
+  ansible_cfg      = "${local.repo_root}/ansible/ansible.cfg"
+  ansible_inventory_template = <<-EOT
+[ews]
+packer-build ansible_host={{ .Host }} ansible_user={{ .User }} ansible_password={{ .Password }} ansible_connection=ssh ansible_port={{ .Port }} ansible_shell_type=powershell ansible_become_method=runas
+EOT
 }

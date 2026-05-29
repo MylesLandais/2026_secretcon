@@ -1,0 +1,17 @@
+---
+# AS-REP DC promotion and domain hardening (asr-003–005, asr-010–016, asr-021).
+
+asrep_install_dir: 'C:\secretcon'
+asrep_runtime_script: "{{ asrep_install_dir }}\\asrep-bootstrap.ps1"
+asrep_promote_log: "{{ asrep_install_dir }}\\asrep-promote.log"
+asrep_promote_marker: "{{ asrep_install_dir }}\\asrep-promoted.marker"
+asrep_seed_marker: "{{ asrep_install_dir }}\\asrep-seed.marker"
+
+asrep_ad_domain: "{{ lookup('env', 'AD_DOMAIN') | default('secretcon.local', true) }}"
+asrep_ad_netbios: "{{ lookup('env', 'AD_NETBIOS') | default('SECRETCON', true) }}"
+asrep_ad_safemode_password: "{{ lookup('env', 'AD_SAFEMODE_PASSWORD') | default('PizzaMan123!', true) }}"
+
+# Install-ADDSForest may remain in PowerShell through Packer reboot (bootstrap-phase).
+asrep_promotion_delegate_powershell: true
+
+asrep_ad_wait_timeout_minutes: 15

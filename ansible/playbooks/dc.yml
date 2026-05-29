@@ -1,0 +1,13 @@
+---
+- name: Converge domain controller pair (scaffold)
+  hosts: dc
+  gather_facts: true
+  roles:
+    - role: sysmon
+      when: false
+    - role: dc_promote
+      when: false
+    - role: wazuh_agent
+      when: false
+    - role: windows_startup_task
+      when: false

@@ -64,37 +64,6 @@ variable "proxmox_node" {
 }
 
 locals {
-  repo_root = "${path.root}/../../.."
-
-  _asrep_lines = compact([
-    for line in split("\n", file("${path.root}/provision-manifest-asrep.txt")) :
-    trimspace(line)
-    if length(trimspace(line)) > 0 && !startswith(trimspace(line), "#")
-  ])
-  _shared_lines = compact([
-    for line in split("\n", file("${path.root}/provision-manifest-shared.txt")) :
-    trimspace(line)
-    if length(trimspace(line)) > 0 && !startswith(trimspace(line), "#")
-  ])
-
-  provision_files = [
-    for p in concat(local._asrep_lines, local._shared_lines) :
-    "${local.repo_root}/${p}"
-  ]
-
-  bootstrap_script = "${local.repo_root}/provisioning/powershell/bootstrap_asrep.ps1"
-
-  bootstrap_env = [
-    "WAZUH_MANAGER=${var.asrep_wazuh_manager}",
-    "AD_DOMAIN=${var.ad_domain}",
-    "AD_NETBIOS=${var.ad_netbios}",
-    "AD_SAFEMODE_PASSWORD=${var.ad_safemode_password}",
-    "SECRETCON_ASREP_USER=${var.asrep_user}",
-    "SECRETCON_ASREP_PASSWORD=${var.asrep_password}",
-    "SECRETCON_ASREP_FLAG=${var.asrep_flag}",
-    "WAZUH_ENROLLMENT_OPTIONAL=1",
-  ]
-
   _static_ip_file = (
     var.proxmox_static_ip_file != "" ?
     var.proxmox_static_ip_file :
@@ -107,6 +76,11 @@ locals {
   ]
   proxmox_provision_files = concat(local._proxmox_prefix, local.provision_files)
 
+  proxmox_bootstrap_env = concat([
+    for e in local.bootstrap_env :
+    startswith(e, "WAZUH_MANAGER=") ? "WAZUH_MANAGER=192.168.61.10" : e
+  ], ["WAZUH_ENROLLMENT_OPTIONAL=1"])
+
   ssh_private_key_file   = "${local.repo_root}/provisioning/ssh/packer_ed25519"
   ssh_username           = "packer"
   ssh_password           = "packer"
@@ -114,43 +88,6 @@ locals {
   ssh_handshake_attempts = 1000
   boot_wait              = "3s"
   boot_command_installer = ["<spacebar><spacebar>"]
-}
-
-variable "asrep_wazuh_manager" {
-  type    = string
-  default = "192.168.61.10"
-}
-
-variable "ad_domain" {
-  type    = string
-  default = "secretcon.local"
-}
-
-variable "ad_netbios" {
-  type    = string
-  default = "SECRETCON"
-}
-
-variable "ad_safemode_password" {
-  type      = string
-  default   = env("AD_SAFEMODE_PASSWORD")
-  sensitive = true
-}
-
-variable "asrep_user" {
-  type    = string
-  default = env("SECRETCON_ASREP_USER")
-}
-
-variable "asrep_password" {
-  type      = string
-  default   = env("SECRETCON_ASREP_PASSWORD")
-  sensitive = true
-}
-
-variable "asrep_flag" {
-  type    = string
-  default = env("SECRETCON_ASREP_FLAG")
 }
 
 source "proxmox-iso" "win2016-asrep" {
@@ -227,7 +164,7 @@ build {
 
   provisioner "powershell" {
     script           = local.bootstrap_script
-    environment_vars = local.bootstrap_env
+    environment_vars = local.proxmox_bootstrap_env
   }
 
   provisioner "windows-restart" {
@@ -239,7 +176,7 @@ build {
       "$env:SECRETCON_ASREP_PACKER = '1'",
       "& C:\\secretcon\\asrep-bootstrap.ps1"
     ]
-    environment_vars = local.bootstrap_env
+    environment_vars = local.proxmox_bootstrap_env
   }
 
   provisioner "windows-restart" {
@@ -251,7 +188,7 @@ build {
       "$env:SECRETCON_ASREP_PACKER = '1'",
       "& C:\\secretcon\\asrep-bootstrap.ps1"
     ]
-    environment_vars = local.bootstrap_env
+    environment_vars = local.proxmox_bootstrap_env
   }
 
   provisioner "powershell" {

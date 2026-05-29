@@ -1,0 +1,26 @@
+---
+# In-guest reset loop for shared EWS challenge instances.
+
+ews_reset_task_name: SecretCon-EWS-Reset
+ews_reset_task_description: Reset EWS VNC and LPE challenge state for shared CTF use
+ews_reset_task_interval_minutes: 30
+ews_reset_task_enabled: true
+ews_reset_run_now_on_deploy: true
+
+ews_reset_install_dir: 'C:\secretcon'
+ews_reset_script_path: "{{ ews_reset_install_dir }}\\reset-ews-state.ps1"
+ews_reset_task_xml_path: "{{ ews_reset_install_dir }}\\reset-ews-state-task.xml"
+ews_reset_log_path: "{{ ews_reset_install_dir }}\\reset-ews-state.log"
+
+ews_reset_lpe_service_name: SecretConEwsSync
+ews_reset_lpe_service_exe: 'C:\Program Files\SecretCon\EWS Sync\ews_sync.exe'
+ews_reset_lpe_hijack_path: 'C:\Program Files\SecretCon\EWS.exe'
+
+ews_reset_ultravnc_service_name: uvnc_service
+ews_reset_ultravnc_process_name: winvnc
+ews_reset_ultravnc_watchdog_task_name: SecretCon-UltraVNC-Run
+
+ews_reset_user_name: patrick
+ews_reset_user_desktop: "C:\\Users\\{{ ews_reset_user_name }}\\Desktop"
+ews_reset_user_flag_path: "{{ ews_reset_user_desktop }}\\flag.txt"
+ews_reset_user_flag_script: "{{ ews_reset_install_dir }}\\seed-user-flag.ps1"

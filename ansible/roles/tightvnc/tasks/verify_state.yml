@@ -1,0 +1,113 @@
+---
+# Post-converge registry + firewall assertions (fails play if drift regresses).
+
+- name: Flush handlers before registry and firewall verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Query TightVNC Server registry for converge audit log
+  ansible.windows.win_command: reg.exe query HKLM\SOFTWARE\TightVNC\Server
+  register: tightvnc_reg_query
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Display TightVNC Server registry snapshot
+  ansible.builtin.debug:
+    var: tightvnc_reg_query.stdout_lines
+  when:
+    - not ansible_check_mode
+    - tightvnc_reg_query is defined
+
+- name: Read BlacklistThreshold registry value
+  ansible.windows.win_reg_stat:
+    path: "{{ tightvnc_reg_path }}"
+    name: BlacklistThreshold
+  register: tightvnc_verify_bl_threshold
+  when: not ansible_check_mode
+
+- name: Read BlacklistTimeout registry value
+  ansible.windows.win_reg_stat:
+    path: "{{ tightvnc_reg_path }}"
+    name: BlacklistTimeout
+  register: tightvnc_verify_bl_timeout
+  when: not ansible_check_mode
+
+- name: Read SecurityType registry value
+  ansible.windows.win_reg_stat:
+    path: "{{ tightvnc_reg_path }}"
+    name: SecurityType
+  register: tightvnc_verify_security_type
+  when: not ansible_check_mode
+
+- name: Read PreferAuth registry value
+  ansible.windows.win_reg_stat:
+    path: "{{ tightvnc_reg_path }}"
+    name: PreferAuth
+  register: tightvnc_verify_prefer_auth
+  when: not ansible_check_mode
+
+- name: Read UseVncAuthentication registry value
+  ansible.windows.win_reg_stat:
+    path: "{{ tightvnc_reg_path }}"
+    name: UseVncAuthentication
+  register: tightvnc_verify_use_vnc_auth
+  when: not ansible_check_mode
+
+- name: Read Password registry blob
+  ansible.windows.win_reg_stat:
+    path: "{{ tightvnc_reg_path }}"
+    name: Password
+  register: tightvnc_verify_password_reg
+  when: not ansible_check_mode
+
+- name: Assert TightVNC runtime registry converged
+  ansible.builtin.assert:
+    that:
+      - tightvnc_verify_bl_threshold.exists | default(false)
+      - (tightvnc_verify_bl_threshold.value | default(-1) | int) == (tightvnc_blacklist_threshold | int)
+      - tightvnc_verify_bl_timeout.exists | default(false)
+      - (tightvnc_verify_bl_timeout.value | default(-1) | int) == (tightvnc_blacklist_timeout | int)
+      - tightvnc_verify_security_type.exists | default(false)
+      - (tightvnc_verify_security_type.value | default(-1) | int) == (tightvnc_security_type | int)
+      - tightvnc_verify_prefer_auth.exists | default(false)
+      - (tightvnc_verify_prefer_auth.value | default(-1) | int) == (tightvnc_prefer_auth | int)
+      - tightvnc_verify_use_vnc_auth.exists | default(false)
+      - (tightvnc_verify_use_vnc_auth.value | default(-1) | int) == 1
+      - tightvnc_verify_password_reg.exists | default(false)
+    fail_msg: >-
+      TightVNC registry drift after converge.
+      BlacklistThreshold={{ tightvnc_verify_bl_threshold.value | default('absent') }}
+      (want {{ tightvnc_blacklist_threshold }});
+      SecurityType={{ tightvnc_verify_security_type.value | default('absent') }}
+      (want {{ tightvnc_security_type }});
+      PreferAuth={{ tightvnc_verify_prefer_auth.value | default('absent') }}
+      (want {{ tightvnc_prefer_auth }}).
+      Full reg query is in the debug task above.
+  when: not ansible_check_mode
+
+- name: Query TightVNC inbound firewall rule
+  ansible.windows.win_command: >-
+    netsh advfirewall firewall show rule
+    name="{{ tightvnc_firewall_rule_name }}"
+  register: tightvnc_firewall_query
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Display TightVNC firewall rule snapshot
+  ansible.builtin.debug:
+    var: tightvnc_firewall_query.stdout_lines
+  when:
+    - not ansible_check_mode
+    - tightvnc_firewall_query is defined
+
+- name: Assert TightVNC inbound firewall rule is present and allowing port 5900
+  ansible.builtin.assert:
+    that:
+      - tightvnc_firewall_query.rc == 0
+      - tightvnc_firewall_query.stdout is search('Enabled:\\s+Yes', ignorecase=True)
+      - tightvnc_firewall_query.stdout is search('Action:\\s+Allow', ignorecase=True)
+      - tightvnc_firewall_query.stdout is search(tightvnc_listen_port | string)
+    fail_msg: >-
+      Missing or misconfigured firewall rule {{ tightvnc_firewall_rule_name }}.
+      Expect Enabled Yes, Action Allow, LocalPort {{ tightvnc_listen_port }}.
+  when: not ansible_check_mode

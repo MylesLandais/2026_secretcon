@@ -1,0 +1,304 @@
+{
+  "generated": "2026-05-27T13:45:42Z",
+  "lib_adoption": {
+    "load_repo_env": [
+      "scripts/observability/vnc-public-attack.sh",
+      "scripts/proxmox/disable-vmbr1-mirror.sh",
+      "scripts/proxmox/opnsense-apply-config.sh",
+      "scripts/proxmox/opnsense-export-pcap.sh",
+      "scripts/proxmox/rollback-vmbr1-mirror.sh",
+      "scripts/proxmox/deploy-cysvuln.sh",
+      "scripts/proxmox/preflight-ews-prod.sh",
+      "scripts/proxmox/snapshot-before-mirror.sh",
+      "scripts/proxmox/deploy-asrep.sh",
+      "scripts/proxmox/enable-vmbr1-mirror.sh",
+      "scripts/validate/validate-vnc-public-attack.sh",
+      "scripts/lib/proxmox-ssh.sh",
+      "scripts/lib/load_repo_env.sh",
+      "scripts/lib/vnc-lab.sh"
+    ],
+    "docker_stack": [
+      "scripts/wazuh-docker-down.sh",
+      "scripts/bloodhound-docker-up.sh",
+      "scripts/arkime-docker-up.sh",
+      "scripts/arkime-docker-down.sh",
+      "scripts/wazuh-docker-up.sh",
+      "scripts/lib/docker-stack.sh"
+    ],
+    "check_harness": [
+      "scripts/verify-cysvuln.sh",
+      "scripts/validate-three-box-chain.sh",
+      "scripts/verify-asrep.sh",
+      "scripts/verify-ews.sh",
+      "scripts/lib/check-harness.sh"
+    ],
+    "evidence_harness": [
+      "scripts/proxmox/preflight-ews-prod.sh",
+      "scripts/lib/evidence-harness.sh"
+    ],
+    "chain_env": [
+      "scripts/validate-three-box-chain.sh",
+      "scripts/observability/ews-asrep-pivot.sh",
+      "scripts/observability/stress-campaign-chain.sh",
+      "scripts/proxmox/deploy-cysvuln.sh",
+      "scripts/proxmox/deploy-asrep.sh",
+      "scripts/proxmox/configure-chain-dns.sh",
+      "scripts/lib/render_autounattend.sh"
+    ],
+    "proxmox_ssh": [
+      "scripts/proxmox/rollback-vmbr1-mirror.sh",
+      "scripts/proxmox/snapshot-before-mirror.sh",
+      "scripts/proxmox/enable-vmbr1-mirror.sh",
+      "scripts/lib/proxmox-ssh.sh"
+    ],
+    "vnc_lab": [
+      "scripts/lib/vnc-lab.sh"
+    ],
+    "stress_campaign": [
+      "scripts/observability/stress-campaign.sh",
+      "scripts/observability/stress-campaign-asrep.sh",
+      "scripts/proxmox/baseline-snapshot-cysvuln.sh",
+      "scripts/lib/loop_lib.sh",
+      "scripts/lib/stress-campaign.sh"
+    ]
+  },
+  "should_use_lib": {
+    "load_repo_env": [
+      "scripts/observability/opnsense-vnc-challenge.sh",
+      "scripts/observability/ews-asrep-pivot.sh",
+      "scripts/proxmox/deploy-dc.sh",
+      "scripts/proxmox/baseline-snapshot-asrep.sh",
+      "scripts/proxmox/sync-wazuh-rules.sh",
+      "scripts/proxmox/deploy-wazuh-siem.sh",
+      "scripts/proxmox/baseline-snapshot-cysvuln.sh",
+      "scripts/validate/validate-opnsense-vnc-pipeline.sh"
+    ],
+    "docker_stack": [],
+    "check_harness": [],
+    "evidence_harness": [],
+    "chain_env": [],
+    "proxmox_ssh": [
+      "scripts/proxmox/rebuild-ews.sh",
+      "scripts/proxmox/deploy-dc.sh",
+      "scripts/proxmox/disable-vmbr1-mirror.sh",
+      "scripts/proxmox/opnsense-apply-config.sh",
+      "scripts/proxmox/opnsense-export-pcap.sh",
+      "scripts/proxmox/baseline-snapshot-asrep.sh",
+      "scripts/proxmox/sync-arkime-pcap.sh",
+      "scripts/proxmox/deploy-cysvuln.sh",
+      "scripts/proxmox/sync-wazuh-rules.sh",
+      "scripts/proxmox/preflight-ews-prod.sh",
+      "scripts/proxmox/reproduce-ews-prod-proof.sh",
+      "scripts/proxmox/probe-ews.sh",
+      "scripts/proxmox/deploy-asrep.sh",
+      "scripts/proxmox/build-wazuh-template.sh",
+      "scripts/proxmox/configure-chain-dns.sh",
+      "scripts/proxmox/enable-wazuh-replay-listener.sh",
+      "scripts/proxmox/deploy-wazuh-siem.sh",
+      "scripts/proxmox/deploy-arkime-capture.sh",
+      "scripts/proxmox/verify-wazuh-siem.sh",
+      "scripts/proxmox/baseline-snapshot-cysvuln.sh",
+      "scripts/proxmox/verify-arkime-capture.sh"
+    ],
+    "vnc_lab": [],
+    "stress_campaign": []
+  },
+  "duplicate_line_clusters": 157,
+  "top_duplicate_samples": [
+    {
+      "hash": "50c86201026bfe0d",
+      "locations": [
+        "scripts/observability-loop-asrep.sh:52",
+        "scripts/observability-loop-asrep.sh:57",
+        "scripts/observability-loop-asrep.sh:144",
+        "scripts/observability-loop-asrep.sh:148",
+        "scripts/observability-loop.sh:70",
+        "scripts/observability-loop.sh:76",
+        "scripts/observability-loop.sh:233",
+        "scripts/observability-loop.sh:240"
+      ]
+    },
+    {
+      "hash": "769a5ee61dba882a",
+      "locations": [
+        "scripts/test-local.sh:9",
+        "scripts/validate-asrep-siem.sh:11",
+        "scripts/wazuh-docker-down.sh:11",
+        "scripts/bloodhound-docker-up.sh:4",
+        "scripts/stage-cysvuln-iso.sh:12",
+        "scripts/build-provision-iso.sh:11",
+        "scripts/observability-loop-asrep.sh:11",
+        "scripts/arkime-docker-up.sh:14"
+      ]
+    },
+    {
+      "hash": "13ba16ef19d9b521",
+      "locations": [
+        "scripts/observability/fetch-rubeus.sh:18",
+        "scripts/observability/vnc-public-attack.sh:43",
+        "scripts/observability/opnsense-vnc-challenge.sh:38",
+        "scripts/observability/vnc-pcap-proof.sh:28",
+        "scripts/observability/ews-asrep-pivot.sh:32",
+        "scripts/observability/vnc-wazuh-proof.sh:34",
+        "scripts/observability/vnc-pcap-analyze.sh:35",
+        "scripts/proxmox/rebuild-ews.sh:30"
+      ]
+    },
+    {
+      "hash": "0c1bbdcb6d376f43",
+      "locations": [
+        "scripts/validate-three-box-chain.sh:33",
+        "scripts/validate-asrep-siem.sh:22",
+        "scripts/observability-loop-asrep.sh:33",
+        "scripts/wazuh-replay-to-proxmox.sh:76",
+        "scripts/wazuh-drain-alerts.sh:51",
+        "scripts/observability-loop.sh:48",
+        "scripts/wazuh-export-dataset.sh:105",
+        "scripts/observability/baseline-snapshot-asrep.sh:26"
+      ]
+    },
+    {
+      "hash": "e69c908e9ce28218",
+      "locations": [
+        "scripts/ad-chain8/wait-chain8-lab.sh:5",
+        "scripts/ad-chain8/chain8-verify-prep.sh:5",
+        "scripts/ad-chain8/capture-attack-faq.sh:5",
+        "scripts/ad-chain8/chain8-preflight.sh:5",
+        "scripts/ad-chain8/chain8-validate-lab.sh:5",
+        "scripts/ad-chain8/chain8-prep-lab-net.sh:6",
+        "scripts/ad-chain8/run-walkthrough-validation.sh:12",
+        "scripts/observability/baseline-snapshot-asrep.sh:9"
+      ]
+    },
+    {
+      "hash": "6c6558c6f26dfaee",
+      "locations": [
+        "scripts/observability/stress-campaign.sh:114",
+        "scripts/observability/ews-asrep-pivot.sh:58",
+        "scripts/proxmox/rebuild-ews.sh:58",
+        "scripts/proxmox/deploy-dc.sh:24",
+        "scripts/proxmox/disable-vmbr1-mirror.sh:138",
+        "scripts/proxmox/baseline-snapshot-asrep.sh:22",
+        "scripts/proxmox/sync-arkime-pcap.sh:58",
+        "scripts/proxmox/deploy-cysvuln.sh:51"
+      ]
+    },
+    {
+      "hash": "ce4fa5e80392512d",
+      "locations": [
+        "provisioning/opnsense/scripts/export-config.sh:52",
+        "scripts/observability/stress-campaign.sh:125",
+        "scripts/observability/opnsense-vnc-challenge.sh:258",
+        "scripts/observability/ews-asrep-pivot.sh:98",
+        "scripts/proxmox/rebuild-ews.sh:84",
+        "scripts/proxmox/disable-vmbr1-mirror.sh:141",
+        "scripts/proxmox/opnsense-apply-config.sh:138",
+        "scripts/proxmox/opnsense-export-pcap.sh:72"
+      ]
+    },
+    {
+      "hash": "36b000681e60d750",
+      "locations": [
+        "scripts/observability/stress-campaign.sh:175",
+        "scripts/observability/ews-asrep-pivot.sh:135",
+        "scripts/proxmox/disable-vmbr1-mirror.sh:170",
+        "scripts/proxmox/baseline-snapshot-asrep.sh:50",
+        "scripts/proxmox/deploy-cysvuln.sh:88",
+        "scripts/proxmox/deploy-cysvuln.sh:96",
+        "scripts/proxmox/deploy-cysvuln.sh:258",
+        "scripts/proxmox/deploy-cysvuln.sh:299"
+      ]
+    },
+    {
+      "hash": "b043cbd0e5c5e4bb",
+      "locations": [
+        "scripts/observability/ews-asrep-pivot.sh:56",
+        "scripts/proxmox/rebuild-ews.sh:59",
+        "scripts/proxmox/deploy-dc.sh:37",
+        "scripts/proxmox/disable-vmbr1-mirror.sh:139",
+        "scripts/proxmox/baseline-snapshot-asrep.sh:38",
+        "scripts/proxmox/sync-arkime-pcap.sh:59",
+        "scripts/proxmox/deploy-cysvuln.sh:70",
+        "scripts/proxmox/sync-wazuh-rules.sh:42"
+      ]
+    },
+    {
+      "hash": "d4244700b7d75c69",
+      "locations": [
+        "scripts/arkime-docker-up.sh:80",
+        "scripts/wazuh-docker-up.sh:58",
+        "scripts/ad-chain8/wait-chain8-lab.sh:90",
+        "scripts/observability/baseline-snapshot-asrep.sh:58",
+        "scripts/observability/baseline-snapshot.sh:71",
+        "scripts/proxmox/deploy-dc.sh:63",
+        "scripts/proxmox/baseline-snapshot-asrep.sh:87",
+        "scripts/proxmox/deploy-cysvuln.sh:212"
+      ]
+    },
+    {
+      "hash": "9604ae768cac9477",
+      "locations": [
+        "scripts/verify-cysvuln.sh:37",
+        "scripts/validate-cysvuln-aie-joe.sh:22",
+        "scripts/cysvuln-local-prep.sh:18",
+        "scripts/run-joe-tool.sh:54",
+        "scripts/verify-asrep.sh:33",
+        "scripts/validate-cysvuln-chain.sh:39",
+        "scripts/observability/run-baseline-tour.sh:66",
+        "scripts/observability/stress-campaign.sh:156"
+      ]
+    },
+    {
+      "hash": "1adef3f05cce3a2f",
+      "locations": [
+        "scripts/observability/stress-campaign.sh:120",
+        "scripts/observability/opnsense-vnc-challenge.sh:255",
+        "scripts/proxmox/baseline-snapshot-asrep.sh:23",
+        "scripts/proxmox/deploy-cysvuln.sh:52",
+        "scripts/proxmox/sync-wazuh-rules.sh:44",
+        "scripts/proxmox/preflight-ews-prod.sh:65",
+        "scripts/proxmox/reproduce-ews-prod-proof.sh:78",
+        "scripts/proxmox/probe-ews.sh:63"
+      ]
+    },
+    {
+      "hash": "df94ef377f00490f",
+      "locations": [
+        "scripts/observability/stress-campaign.sh:130",
+        "scripts/observability/opnsense-vnc-challenge.sh:257",
+        "scripts/proxmox/baseline-snapshot-asrep.sh:44",
+        "scripts/proxmox/sync-arkime-pcap.sh:61",
+        "scripts/proxmox/sync-wazuh-rules.sh:47",
+        "scripts/proxmox/reproduce-ews-prod-proof.sh:84",
+        "scripts/proxmox/enable-wazuh-replay-listener.sh:58",
+        "scripts/proxmox/deploy-wazuh-siem.sh:32"
+      ]
+    },
+    {
+      "hash": "a953de1f2c69fff6",
+      "locations": [
+        "provisioning/opnsense/scripts/export-config.sh:54",
+        "scripts/observability/stress-campaign.sh:127",
+        "scripts/observability/ews-asrep-pivot.sh:100",
+        "scripts/proxmox/disable-vmbr1-mirror.sh:143",
+        "scripts/proxmox/opnsense-apply-config.sh:140",
+        "scripts/proxmox/opnsense-export-pcap.sh:74",
+        "scripts/proxmox/deploy-cysvuln.sh:79",
+        "scripts/proxmox/sync-wazuh-rules.sh:61"
+      ]
+    },
+    {
+      "hash": "2a1ed9abbd0cdf7a",
+      "locations": [
+        "scripts/chain8-bridge-down.sh:15",
+        "scripts/run-chain8-lab.sh:9",
+        "scripts/run-chain8-lab-down.sh:5",
+        "scripts/chain8-bridge-init.sh:21",
+        "scripts/ad-chain8/wait-chain8-lab.sh:16",
+        "scripts/ad-chain8/chain8-dnsmasq-start.sh:11",
+        "scripts/ad-chain8/capture-attack-faq.sh:136",
+        "scripts/ad-chain8/chain8-prep-lab-net.sh:7"
+      ]
+    }
+  ]
+}

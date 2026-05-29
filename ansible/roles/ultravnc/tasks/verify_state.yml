@@ -1,0 +1,77 @@
+---
+# Post-converge ultravnc.ini + firewall assertions.
+
+- name: Flush handlers before registry and firewall verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Read ultravnc.ini for converge audit log
+  ansible.windows.win_shell: Get-Content -LiteralPath "{{ ultravnc_ini_path }}"
+  register: ultravnc_ini_query
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Display ultravnc.ini snapshot
+  ansible.builtin.debug:
+    var: ultravnc_ini_query.stdout_lines
+  when:
+    - not ansible_check_mode
+    - ultravnc_ini_query is defined
+
+- name: Parse live passwd= from ultravnc.ini
+  ansible.windows.win_shell: |
+    (Select-String -Path '{{ ultravnc_ini_path }}' -Pattern '^passwd=(.+)$').Matches.Groups[1].Value.Trim().ToUpper()
+  register: ultravnc_verify_passwd
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Assert ultravnc.ini passwd converged (non-empty 18-char hex)
+  ansible.builtin.assert:
+    that:
+      - (ultravnc_verify_passwd.stdout | default('') | trim | length) == 18
+    fail_msg: >-
+      UltraVNC passwd missing or wrong length after converge.
+      live={{ ultravnc_verify_passwd.stdout | default('absent') }}.
+  when: not ansible_check_mode
+
+- name: Query ORL WinVNC3 registry for forensic parity audit
+  ansible.windows.win_command: reg.exe query HKLM\SOFTWARE\ORL\WinVNC3
+  register: ultravnc_reg_query
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Display ORL WinVNC3 registry snapshot
+  ansible.builtin.debug:
+    var: ultravnc_reg_query.stdout_lines
+  when:
+    - not ansible_check_mode
+    - ultravnc_reg_query is defined
+    - ultravnc_reg_query.rc == 0
+
+- name: Query UltraVNC inbound firewall rule
+  ansible.windows.win_command: >-
+    netsh advfirewall firewall show rule
+    name="{{ ultravnc_firewall_rule_name }}"
+  register: ultravnc_firewall_query
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Display UltraVNC firewall rule snapshot
+  ansible.builtin.debug:
+    var: ultravnc_firewall_query.stdout_lines
+  when:
+    - not ansible_check_mode
+    - ultravnc_firewall_query is defined
+
+- name: Assert UltraVNC inbound firewall rule is present and allowing port 5900
+  ansible.builtin.assert:
+    that:
+      - ultravnc_firewall_query.rc == 0
+      - ultravnc_firewall_query.stdout is search('Enabled:\\s+Yes', ignorecase=True)
+      - ultravnc_firewall_query.stdout is search('Action:\\s+Allow', ignorecase=True)
+      - ultravnc_firewall_query.stdout is search(ultravnc_listen_port | string)
+    fail_msg: >-
+      Missing or misconfigured firewall rule {{ ultravnc_firewall_rule_name }}.
+      Expect Enabled Yes, Action Allow, LocalPort {{ ultravnc_listen_port }}.
+  when: not ansible_check_mode

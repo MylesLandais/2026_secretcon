@@ -1,0 +1,85 @@
+---
+# Install-SecretConWazuhAgent parity (psm-004, ews-003).
+
+- name: Detect installed Wazuh agent service
+  ansible.windows.win_service:
+    name: "{{ wazuh_agent_service_name }}"
+  register: wazuh_agent_service_state
+  failed_when: false
+
+- name: Download Wazuh agent MSI
+  ansible.windows.win_get_url:
+    url: "{{ wazuh_agent_msi_url }}"
+    dest: "{{ wazuh_agent_msi_path }}"
+    force: false
+  when:
+    - not ansible_check_mode
+    - not wazuh_agent_service_state.exists | default(false)
+
+- name: Install Wazuh agent MSI
+  ansible.windows.win_package:
+    path: "{{ wazuh_agent_msi_path }}"
+    arguments: "/q WAZUH_MANAGER={{ wazuh_manager }} WAZUH_AGENT_GROUP={{ wazuh_agent_group }}"
+    state: present
+  when:
+    - not ansible_check_mode
+    - not wazuh_agent_service_state.exists | default(false)
+
+- name: Ensure Wazuh agent local_internal_options.conf exists
+  ansible.windows.win_file:
+    path: "{{ wazuh_agent_local_options }}"
+    state: touch
+  when: not ansible_check_mode
+
+- name: Opt in to manager remote_commands for logcollector
+  ansible.windows.win_powershell:
+    script: |
+      $path = '{{ wazuh_agent_local_options }}'
+      if (-not (Test-Path -LiteralPath $path)) {
+          Set-Content -LiteralPath $path -Value '' -Encoding ASCII
+      }
+      $existing = Get-Content -LiteralPath $path -ErrorAction SilentlyContinue
+      if ($existing -notmatch '^\s*logcollector\.remote_commands\s*=\s*1') {
+          Add-Content -LiteralPath $path -Value 'logcollector.remote_commands=1' -Encoding ASCII
+          $Ansible.Changed = $true
+      } else {
+          $Ansible.Changed = $false
+      }
+  when:
+    - not ansible_check_mode
+    - wazuh_agent_enable_remote_commands | bool
+
+- name: Start Wazuh agent service
+  ansible.windows.win_service:
+    name: "{{ wazuh_agent_service_name }}"
+    start_mode: auto
+    state: started
+  when: not ansible_check_mode
+
+- name: Wait for Wazuh agent enrollment
+  ansible.windows.win_shell: |
+    $log = '{{ wazuh_agent_ossec_log }}'
+    $deadline = (Get-Date).AddSeconds({{ wazuh_agent_enrollment_timeout_seconds }})
+    while ((Get-Date) -lt $deadline) {
+      if ((Test-Path $log) -and (Select-String -Path $log -Pattern 'Connected to the server' -SimpleMatch -Quiet)) {
+        exit 0
+      }
+      Start-Sleep -Seconds 2
+    }
+    exit 1
+  register: wazuh_enroll_result
+  failed_when: >-
+    wazuh_enroll_result.rc != 0
+    and not (wazuh_agent_enrollment_optional | bool)
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Warn when Wazuh enrollment optional and manager unreachable
+  ansible.builtin.debug:
+    msg: >-
+      Wazuh agent did not log enrollment within
+      {{ wazuh_agent_enrollment_timeout_seconds }}s (EnrollmentOptional).
+  when:
+    - not ansible_check_mode
+    - wazuh_agent_enrollment_optional | bool
+    - wazuh_enroll_result.rc | default(0) != 0

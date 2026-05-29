@@ -1,0 +1,40 @@
+---
+# Chocolatey install + uvnc_service registration.
+
+- name: Install UltraVNC via Chocolatey
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ ultravnc_chocolatey_package }}"
+    state: present
+  when: not ansible_check_mode
+
+- name: Read uvnc_service state
+  ansible.windows.win_service:
+    name: "{{ ultravnc_service_name }}"
+  register: ultravnc_service_state
+  failed_when: false
+
+- name: Register UltraVNC as Windows service when missing
+  ansible.windows.win_command: >-
+    "{{ ultravnc_install_dir }}\winvnc.exe" -install
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - not (ultravnc_service_state.exists | default(false))
+    - not (ultravnc_force_reinstall | bool)
+  notify: "ultravnc service config changed"
+
+- name: Force re-register UltraVNC service
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $svc = Get-Service -Name '{{ ultravnc_service_name }}' -ErrorAction SilentlyContinue
+      if ($svc) {
+          Stop-Service -Name '{{ ultravnc_service_name }}' -Force -ErrorAction SilentlyContinue
+          & '{{ ultravnc_install_dir }}\winvnc.exe' -uninstall
+      }
+      & '{{ ultravnc_install_dir }}\winvnc.exe' -install
+      $Ansible.Changed = $true
+  when:
+    - not ansible_check_mode
+    - ultravnc_force_reinstall | bool
+  notify: "ultravnc service config changed"

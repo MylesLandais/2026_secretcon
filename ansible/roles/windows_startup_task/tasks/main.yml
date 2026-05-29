@@ -1,0 +1,73 @@
+---
+# Register-SecretConLogonSeederTask / Register-ScheduledTask parity.
+
+- name: Register startup scheduled task {{ windows_startup_task_name }}
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $scriptPath = '{{ windows_startup_task_script }}'
+      if (-not (Test-Path -LiteralPath $scriptPath)) {
+          throw "Script not found: $scriptPath"
+      }
+      $action = New-ScheduledTaskAction `
+        -Execute '{{ windows_startup_task_execute }}' `
+        -Argument "{{ windows_startup_task_arguments }}"
+      $trigger = New-ScheduledTaskTrigger -AtStartup
+      $principal = New-ScheduledTaskPrincipal `
+        -UserId '{{ windows_startup_task_user }}' `
+        -LogonType ServiceAccount `
+        -RunLevel Highest
+      $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable
+      Register-ScheduledTask `
+        -TaskName '{{ windows_startup_task_name }}' `
+        -Action $action `
+        -Trigger $trigger `
+        -Principal $principal `
+        -Settings $settings `
+        -Force | Out-Null
+      $Ansible.Changed = $true
+  when:
+    - windows_startup_task_state == 'present'
+    - windows_startup_task_trigger == 'startup'
+    - not ansible_check_mode
+
+- name: Register logon scheduled task {{ windows_startup_task_name }}
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $scriptPath = '{{ windows_startup_task_script }}'
+      if (-not (Test-Path -LiteralPath $scriptPath)) {
+          throw "Script not found: $scriptPath"
+      }
+      $logonUser = '{{ windows_startup_task_logon_user | default(windows_startup_task_user) }}'
+      $action = New-ScheduledTaskAction `
+        -Execute '{{ windows_startup_task_execute }}' `
+        -Argument "{{ windows_startup_task_arguments }}"
+      $trigger = New-ScheduledTaskTrigger -AtLogOn -User $logonUser
+      $principal = New-ScheduledTaskPrincipal `
+        -UserId $logonUser `
+        -LogonType Interactive `
+        -RunLevel Limited
+      Register-ScheduledTask `
+        -TaskName '{{ windows_startup_task_name }}' `
+        -Action $action `
+        -Trigger $trigger `
+        -Principal $principal `
+        -Force | Out-Null
+      $Ansible.Changed = $true
+  when:
+    - windows_startup_task_state == 'present'
+    - windows_startup_task_trigger == 'logon'
+    - not ansible_check_mode
+
+- name: Remove scheduled task {{ windows_startup_task_name }}
+  ansible.windows.win_powershell:
+    script: |
+      Unregister-ScheduledTask -TaskName '{{ windows_startup_task_name }}' -Confirm:$false -ErrorAction SilentlyContinue
+      $Ansible.Changed = $true
+  when:
+    - windows_startup_task_state == 'absent'
+    - not ansible_check_mode

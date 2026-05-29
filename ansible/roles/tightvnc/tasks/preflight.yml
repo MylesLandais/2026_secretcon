@@ -1,0 +1,68 @@
+---
+# Controller-side assertions before touching the guest.
+
+- name: Stat vendored VNC wordlist on controller
+  ansible.builtin.stat:
+    path: "{{ tightvnc_wordlist_path }}"
+  delegate_to: localhost
+  run_once: true
+  register: tightvnc_wordlist_stat
+  vars:
+    ansible_connection: local
+
+- name: Require vendored VNC wordlist
+  ansible.builtin.assert:
+    that:
+      - tightvnc_wordlist_stat.stat.exists
+      - tightvnc_wordlist_stat.stat.isreg
+    fail_msg: >-
+      Missing wordlist at {{ tightvnc_wordlist_path }}.
+      See provisioning/wordlists/readme.md.
+  run_once: true
+
+- name: Load vendored VNC wordlist lines
+  ansible.builtin.slurp:
+    src: "{{ tightvnc_wordlist_path }}"
+  delegate_to: localhost
+  run_once: true
+  register: tightvnc_wordlist_slurp
+  vars:
+    ansible_connection: local
+
+- name: Parse wordlist entries
+  ansible.builtin.set_fact:
+    tightvnc_wordlist_entries: >-
+      {{
+        (tightvnc_wordlist_slurp.content | b64decode).splitlines()
+        | map('trim')
+        | reject('equalto', '')
+        | reject('match', '^#')
+        | list
+      }}
+  run_once: true
+
+- name: Assert planted VNC password is in wordlist
+  ansible.builtin.assert:
+    that: tightvnc_password in tightvnc_wordlist_entries
+    fail_msg: >-
+      tightvnc_password={{ tightvnc_password }} is not listed in
+      {{ tightvnc_wordlist_path }}.
+  run_once: true
+
+- name: Assert BlacklistThreshold exceeds wordlist size
+  ansible.builtin.assert:
+    that: (tightvnc_blacklist_threshold | int) > (tightvnc_wordlist_entries | length)
+    fail_msg: >-
+      tightvnc_blacklist_threshold={{ tightvnc_blacklist_threshold }} must be
+      greater than wordlist size ({{ tightvnc_wordlist_entries | length }}).
+  run_once: true
+
+- name: Assert VncAuth security types for external brute tools
+  ansible.builtin.assert:
+    that:
+      - (tightvnc_security_type | int) == 2
+      - (tightvnc_prefer_auth | int) == 2
+    fail_msg: >-
+      tightvnc_security_type and tightvnc_prefer_auth must be 2 (VncAuth) for
+      nmap vnc-brute / msf vnc_login / hydra compatibility.
+  run_once: true

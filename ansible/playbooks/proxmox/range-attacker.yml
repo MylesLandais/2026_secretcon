@@ -1,0 +1,128 @@
+---
+# Deploy Ubuntu range attacker VM (hydra on vmbr1 @ 192.168.61.50).
+- name: Deploy range attacker on Proxmox
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    range_template_vmid: "{{ lookup('env', 'TEMPLATE_VMID') | default('9000', true) | int }}"
+    range_vmid: "{{ lookup('env', 'RANGE_ATTACKER_VMID') | default('112', true) | int }}"
+    range_vm_name: "{{ lookup('env', 'RANGE_ATTACKER_NAME') | default('secretcon-range-attacker', true) }}"
+    range_vm_ip: "{{ lookup('env', 'RANGE_ATTACKER_IP') | default('192.168.61.50', true) }}"
+    range_vm_cidr: "{{ lookup('env', 'RANGE_ATTACKER_CIDR') | default('24', true) }}"
+    range_vm_dns: "{{ lookup('env', 'RANGE_ATTACKER_DNS') | default('192.168.61.52,192.168.61.10', true) }}"
+    range_user_data_local: "{{ playbook_dir }}/../../../provisioning/cloud-init/range-attacker/user-data"
+    range_ssh_pub_local: "{{ lookup('env', 'SSH_PUB') | default(playbook_dir + '/../../../provisioning/ssh/packer_ed25519.pub', true) }}"
+    proxmox_api_timeout: "{{ lookup('env', 'PROXMOX_API_TIMEOUT') | default('900', true) | int }}"
+
+  tasks:
+    - name: Require Proxmox API password
+      ansible.builtin.assert:
+        that:
+          - proxmox_api_password | length > 0
+
+    - name: Upload cloud-init user-data to Proxmox snippets
+      ansible.builtin.copy:
+        src: "{{ range_user_data_local }}"
+        dest: "/var/lib/vz/snippets/range-attacker-user.yaml"
+      delegate_to: "{{ proxmox_api_host }}"
+      vars:
+        ansible_user: root
+        ansible_password: "{{ proxmox_api_password }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+      when: not ansible_check_mode
+
+    - name: Upload deploy SSH public key to Proxmox
+      ansible.builtin.copy:
+        src: "{{ range_ssh_pub_local }}"
+        dest: "/root/.range-attacker-deploy-pub.tmp"
+        mode: "0644"
+      delegate_to: "{{ proxmox_api_host }}"
+      vars:
+        ansible_user: root
+        ansible_password: "{{ proxmox_api_password }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+      when: not ansible_check_mode
+
+    - name: Tear down existing range attacker VM
+      ansible.builtin.include_role:
+        name: proxmox_vm_destroy
+      vars:
+        proxmox_destroy_vmid: "{{ range_vmid }}"
+
+    - name: Clone template to range attacker VMID
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ range_template_vmid }}"
+        clone: "template-{{ range_template_vmid }}"
+        newid: "{{ range_vmid }}"
+        name: "{{ range_vm_name }}"
+        full: true
+        state: present
+      when: not ansible_check_mode
+
+    - name: Remove inherited NICs from template
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ range_vmid }}"
+        update: true
+        delete: "net0,net1"
+      when: not ansible_check_mode
+
+    - name: Configure range attacker VM (dual NIC + cloud-init)
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ range_vmid }}"
+        update: true
+        memory: 4096
+        cores: 2
+        cpu: host
+        net:
+          net0: "virtio,bridge=vmbr0,firewall=1"
+          net1: "virtio,bridge=vmbr1,firewall=1"
+        ipconfig:
+          ipconfig0: "ip=dhcp"
+          ipconfig1: "ip={{ range_vm_ip }}/{{ range_vm_cidr }},gw=192.168.61.1"
+        nameservers: "{{ range_vm_dns.split(',') }}"
+        searchdomains:
+          - secret-ctf.com
+        cicustom: "user=local:snippets/range-attacker-user.yaml"
+        sshkeys: "/root/.range-attacker-deploy-pub.tmp"
+        agent: "enabled=1"
+        onboot: true
+        tags: "attacker,range,secretcon"
+      when: not ansible_check_mode
+
+    - name: Resize range attacker disk to 32G
+      ansible.builtin.command:
+        cmd: "qm resize {{ range_vmid }} scsi0 32G"
+      delegate_to: "{{ proxmox_api_host }}"
+      vars:
+        ansible_user: root
+        ansible_password: "{{ proxmox_api_password }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+      changed_when: true
+      when: not ansible_check_mode
+
+    - name: Start range attacker VM
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ range_vmid }}"
+        state: started
+      when: not ansible_check_mode

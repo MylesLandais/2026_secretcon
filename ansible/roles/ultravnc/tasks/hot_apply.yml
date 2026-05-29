@@ -1,0 +1,38 @@
+---
+# Fast path: copy known-good assets and apply in one shot (~30s, no full role walk).
+
+- name: Stage UltraVNC watchdog script
+  ansible.windows.win_copy:
+    src: start-ultravnc-watchdog.ps1
+    dest: "{{ ultravnc_install_staging_dir }}/start-ultravnc-watchdog.ps1"
+    force: true
+  when: not ansible_check_mode
+
+- name: Stage known-good apply script
+  ansible.windows.win_copy:
+    src: apply-known-good.ps1
+    dest: "{{ ultravnc_install_staging_dir }}/apply-known-good.ps1"
+    force: true
+  when: not ansible_check_mode
+
+- name: Apply known-good UltraVNC config (single shot)
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      & '{{ ultravnc_install_staging_dir }}\apply-known-good.ps1' `
+        -Password '{{ ultravnc_password }}' `
+        -RegBlobHex '{{ ultravnc_registry_blob_hex_nodash }}' `
+        -Port {{ ultravnc_listen_port | int }}
+  register: ultravnc_hot_apply
+  changed_when: true
+  when: not ansible_check_mode
+
+- name: Open TCP/{{ ultravnc_listen_port }} for inbound UltraVNC
+  community.windows.win_firewall_rule:
+    name: "{{ ultravnc_firewall_rule_name }}"
+    localport: "{{ ultravnc_listen_port }}"
+    action: allow
+    direction: in
+    protocol: tcp
+    state: present
+    enabled: true

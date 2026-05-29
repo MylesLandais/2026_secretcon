@@ -1,0 +1,24 @@
+---
+# Generic scheduled-task registration (Register-SecretConLogonSeederTask parity).
+
+windows_startup_task_name: SecretConStartup
+windows_startup_task_script: 'C:\secretcon\task.ps1'
+windows_startup_task_description: SecretCon scheduled task
+
+# startup | logon
+windows_startup_task_trigger: startup
+
+# SYSTEM, patrick, etc.
+windows_startup_task_user: SYSTEM
+windows_startup_task_logon_type: service
+# limited | highest
+windows_startup_task_run_level: highest
+
+windows_startup_task_logon_user: ""
+
+# Powershell.exe -File "script"
+windows_startup_task_execute: powershell.exe
+windows_startup_task_arguments: '-NoProfile -ExecutionPolicy Bypass -File "{{ windows_startup_task_script }}"'
+
+windows_startup_task_enabled: true
+windows_startup_task_state: present

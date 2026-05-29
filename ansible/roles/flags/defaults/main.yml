@@ -1,0 +1,16 @@
+---
+flags_install_dir: 'C:\secretcon'
+
+flags_ews_user_name: patrick
+flags_ews_user_flag_task: SecretConUserFlag
+flags_ews_user_flag_script: "{{ flags_install_dir }}\\seed-user-flag.ps1"
+flags_enable_user_logon_task: true
+
+flags_administrator_desktop: 'C:\Users\Administrator\Desktop'
+flags_root_path: '{{ flags_administrator_desktop }}\root.txt'
+
+flags_cysvuln_user_name: User_Joe
+flags_cysvuln_user_flag_path: 'C:\Users\User_Joe\Desktop\user.txt'
+
+flags_asrep_user_path: 'C:\Users\Public\user.txt'
+flags_asrep_legacy_path: 'C:\Users\Public\enite-flag.txt'

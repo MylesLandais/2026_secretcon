@@ -1,0 +1,20 @@
+---
+# Easy File Sharing Web Server install + service hardening (cyv-009–018, 022–023).
+
+cysvuln_install_dir: 'C:\secretcon'
+cysvuln_efs_installer_name: 60f3ff1f3cd34dec80fba130ea481f31-efssetup.exe
+cysvuln_efs_installer_path: "{{ cysvuln_install_dir }}\\{{ cysvuln_efs_installer_name }}"
+cysvuln_efs_installer_sha256: "{{ lookup('env', 'CYSVULN_INSTALLER_HASH') | default('60ea3256cd272797675e2ec6ea8e02d8ad51209f1cbf9083bc909284b5331d79', true) }}"
+
+cysvuln_efs_root: 'C:\EFS Software\Easy File Sharing Web Server'
+cysvuln_efs_service_name: fswsService
+cysvuln_efs_service_account: User_Joe
+cysvuln_efs_swsfe_counter: 'C:\Windows\SysWOW64\swsfe.dll'
+
+cysvuln_vfolders_root: 'C:\vfolders'
+cysvuln_joe_desktop: 'C:\Users\User_Joe\Desktop'
+
+# Firewall display names from Cy's Notes.txt parity
+cysvuln_firewall_http_display: Allow Port 80
+cysvuln_firewall_https_display: Allow Port 443
+cysvuln_firewall_rdp_display: Allow RDP 3389

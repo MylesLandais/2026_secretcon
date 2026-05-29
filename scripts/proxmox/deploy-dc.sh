@@ -42,8 +42,10 @@ fi
 
 step() { echo -e "\n[*] $*"; }
 
-step "Tearing down any existing VMID ${VMID}"
-ssh "${PROXMOX_SSH}" "qm stop ${VMID} 2>/dev/null || true; while qm status ${VMID} 2>/dev/null | grep -q running; do sleep 2; done; qm destroy ${VMID} --purge 1 --skiplock 1 2>/dev/null || true"
+step "Tearing down any existing VMID ${VMID} (Ansible)"
+# shellcheck source=scripts/lib/ansible-proxmox-env.sh
+source "${REPO_ROOT}/scripts/lib/ansible-proxmox-env.sh"
+ansible_proxmox_run_playbook "${REPO_ROOT}" playbooks/proxmox/dc-teardown.yml -e "dc_vmid=${VMID}"
 
 step "Running packer build for ${ROLE}"
 export PKR_VAR_ad_safemode_password="${AD_SAFEMODE_PASSWORD}"

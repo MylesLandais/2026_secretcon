@@ -1,0 +1,60 @@
+---
+# Observability glue: Wazuh tailer + registry SACL on ORL WinVNC3 path.
+
+- name: Stage Wazuh tvnserver.log tailer
+  ansible.windows.win_copy:
+    src: "{{ ultravnc_tailer_filename }}"
+    dest: "{{ ultravnc_tailer_dest }}"
+    force: true
+
+- name: Enable Registry object-access auditing (auditpol)
+  ansible.windows.win_command: auditpol.exe /set /subcategory:"Registry" /success:enable /failure:enable
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Apply audit-everyone SACL on ORL WinVNC3 registry key
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $vncRegPath = '{{ ultravnc_reg_path }}'
+      if (-not (Test-Path -LiteralPath $vncRegPath)) {
+          New-Item -Path $vncRegPath -Force | Out-Null
+      }
+      $current = Get-Acl -Path $vncRegPath -Audit
+      $rights = [System.Security.AccessControl.RegistryRights]'QueryValues, EnumerateSubKeys, ReadKey'
+      $rule = New-Object System.Security.AccessControl.RegistryAuditRule(
+          'Everyone',
+          $rights,
+          [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+          [System.Security.AccessControl.PropagationFlags]::None,
+          [System.Security.AccessControl.AuditFlags]'Success, Failure'
+      )
+      $alreadyApplied = $false
+      foreach ($r in $current.GetAuditRules($true, $false, [System.Security.Principal.NTAccount])) {
+          if ($r.IdentityReference.Value -eq 'Everyone' -and
+              $r.RegistryRights -band $rights -eq $rights -and
+              ($r.AuditFlags -band [System.Security.AccessControl.AuditFlags]'Success, Failure')) {
+              $alreadyApplied = $true
+              break
+          }
+      }
+      if (-not $alreadyApplied) {
+          $current.AddAuditRule($rule)
+          Set-Acl -Path $vncRegPath -AclObject $current
+          $Ansible.Changed = $true
+      } else {
+          $Ansible.Changed = $false
+      }
+  when: not ansible_check_mode
+
+- name: Verify Wazuh tvnserver tailer is present on guest
+  ansible.windows.win_stat:
+    path: "{{ ultravnc_tailer_dest }}"
+  register: ultravnc_tailer_stat
+  when: not ansible_check_mode
+
+- name: Require staged Wazuh tvnserver tailer
+  ansible.builtin.assert:
+    that:
+      - ultravnc_tailer_stat.stat.exists | default(false)
+  when: not ansible_check_mode

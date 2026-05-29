@@ -1,0 +1,46 @@
+{
+  "generated": "2026-05-27T13:45:42Z",
+  "flagged_count": 10,
+  "samples": [
+    {
+      "path": "docs/notes/archive/proxmox-import-discovery-2026-05-12.md",
+      "reason": "\\d{4}-\\d{2}-\\d{2}"
+    },
+    {
+      "path": "docs/notes/archive/vnc-tvnserver-log-share-violation-2026-05-26.md",
+      "reason": "\\d{4}-\\d{2}-\\d{2}"
+    },
+    {
+      "path": "docs/notes/archive/opnsense-discovery-2026-05-14.md",
+      "reason": "\\d{4}-\\d{2}-\\d{2}"
+    },
+    {
+      "path": "docs/notes/archive/build-status-2026-05-03.md",
+      "reason": "\\d{4}-\\d{2}-\\d{2}"
+    },
+    {
+      "path": "scripts/wazuh-drain-alerts.sh",
+      "reason": "drain"
+    },
+    {
+      "path": "scripts/observability/vnc-pcap-proof.sh",
+      "reason": "proof"
+    },
+    {
+      "path": "scripts/observability/vnc-wazuh-proof.sh",
+      "reason": "proof"
+    },
+    {
+      "path": "scripts/proxmox/reproduce-ews-prod-proof.sh",
+      "reason": "reproduce-"
+    },
+    {
+      "path": "scripts/proxmox/probe-ews.sh",
+      "reason": "probe-"
+    },
+    {
+      "path": "scripts/validate/debug_efs_exploit.sh",
+      "reason": "debug"
+    }
+  ]
+}

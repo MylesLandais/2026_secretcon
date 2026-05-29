@@ -1,0 +1,13 @@
+---
+# Unquoted service path LPE — SecretConEwsSync (ews-011).
+
+ews_lpe_service_root: 'C:\Program Files\SecretCon'
+ews_lpe_service_dir: "{{ ews_lpe_service_root }}\\EWS Sync"
+ews_lpe_service_exe: "{{ ews_lpe_service_dir }}\\ews_sync.exe"
+ews_lpe_hijack_path: "{{ ews_lpe_service_root }}\\EWS.exe"
+ews_lpe_service_name: SecretConEwsSync
+ews_lpe_service_display_name: SecretCon EWS Sync
+ews_lpe_service_description: Synchronizes engineering workstation telemetry with the plant historian
+
+# Writable by BUILTIN\Users on the parent path only (unquoted path primitive).
+ews_lpe_users_modify_path: "{{ ews_lpe_service_root }}"

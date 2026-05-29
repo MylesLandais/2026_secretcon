@@ -1,0 +1,91 @@
+---
+# Sub-flow (b): runtime-honored registry sets + firewall + service start.
+# These ARE picked up by the running tvnserver service after a service
+# restart (verified on 2.7.10 and 2.8.87 per bootstrap_win.ps1:117-122).
+
+- name: Require VNC password authentication
+  ansible.windows.win_regedit:
+    path: "{{ tightvnc_reg_path }}"
+    name: UseVncAuthentication
+    data: 1
+    type: dword
+  notify: "tightvnc service config changed"
+
+- name: Set TightVNC control authentication per campaign (0 = player VNC password only)
+  ansible.windows.win_regedit:
+    path: "{{ tightvnc_reg_path }}"
+    name: UseControlAuthentication
+    data: "{{ tightvnc_use_control_authentication | int }}"
+    type: dword
+  notify: "tightvnc service config changed"
+
+# Per-IP blacklist entries are REG_DWORD values named by dotted-quad client IP.
+# Do NOT match Blacklist* — that deletes BlacklistThreshold/BlacklistTimeout.
+- name: Clear TightVNC per-IP auth blacklist registry entries
+  ansible.windows.win_powershell:
+    script: |
+      $base = '{{ tightvnc_reg_path }}'
+      $protected = @(
+          'BlacklistThreshold', 'BlacklistTimeout', 'SecurityType', 'PreferAuth',
+          'UseVncAuthentication', 'UseControlAuthentication', 'Password',
+          'ControlPassword', 'LogLevel', 'LogDir'
+      )
+      $changed = $false
+      $props = Get-ItemProperty -Path $base -ErrorAction SilentlyContinue
+      if ($props) {
+          foreach ($name in $props.PSObject.Properties.Name) {
+              if ($protected -contains $name) { continue }
+              if ($name -match '^\d+\.\d+\.\d+\.\d+$' -or
+                  $name -match '^(FailedAuth|RejectedAuth|BlockedClient)') {
+                  Remove-ItemProperty -Path $base -Name $name -Force -ErrorAction SilentlyContinue
+                  $changed = $true
+              }
+          }
+      }
+      $Ansible.Changed = $changed
+  when: not ansible_check_mode
+
+- name: Force RFB SecurityType to VncAuth (type 2)
+  ansible.windows.win_command: >-
+    reg.exe add HKLM\SOFTWARE\TightVNC\Server
+    /v SecurityType /t REG_DWORD /d {{ tightvnc_security_type | int }} /f
+  changed_when: true
+  notify: "tightvnc service config changed"
+
+- name: Set PreferAuth to VncAuth (type 2)
+  ansible.windows.win_command: >-
+    reg.exe add HKLM\SOFTWARE\TightVNC\Server
+    /v PreferAuth /t REG_DWORD /d {{ tightvnc_prefer_auth | int }} /f
+  changed_when: true
+  notify: "tightvnc service config changed"
+
+- name: Set TightVNC BlacklistThreshold (raise above SecLists list size)
+  ansible.windows.win_command: >-
+    reg.exe add HKLM\SOFTWARE\TightVNC\Server
+    /v BlacklistThreshold /t REG_DWORD /d {{ tightvnc_blacklist_threshold | int }} /f
+  changed_when: true
+  notify: "tightvnc service config changed"
+
+- name: Set TightVNC BlacklistTimeout to 0 (no per-IP cooldown)
+  ansible.windows.win_command: >-
+    reg.exe add HKLM\SOFTWARE\TightVNC\Server
+    /v BlacklistTimeout /t REG_DWORD /d {{ tightvnc_blacklist_timeout | int }} /f
+  changed_when: true
+  notify: "tightvnc service config changed"
+
+- name: Open TCP/{{ tightvnc_listen_port }} for inbound TightVNC
+  community.windows.win_firewall_rule:
+    name: "{{ tightvnc_firewall_rule_name }}"
+    localport: "{{ tightvnc_listen_port }}"
+    action: allow
+    direction: in
+    protocol: tcp
+    state: present
+    enabled: true
+
+- name: Ensure tvnserver is running and starts automatically
+  ansible.windows.win_service:
+    name: "{{ tightvnc_service_name }}"
+    start_mode: auto
+    state: started
+  when: not ansible_check_mode

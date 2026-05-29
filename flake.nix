@@ -26,8 +26,11 @@
         kali = import ./kali.nix { inherit pkgs; };
 
         defaultShellInputs = with pkgs; [
+          nmap
           packer
           terraform
+          ansible
+          python3Packages.proxmoxer
           jq
           sops
           age
@@ -42,6 +45,7 @@
           netcat
           pkgsCross.mingwW64.buildPackages.gcc
           python3Packages.pywinrm
+          python3Packages.requests
           python3Packages.pytest
           python3Packages.jinja2
           python3Packages.keystone-engine

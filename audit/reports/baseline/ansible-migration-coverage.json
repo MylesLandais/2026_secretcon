@@ -1,0 +1,109 @@
+{
+  "generated": "2026-05-27T13:45:42Z",
+  "rows": [
+    {
+      "concern": "Install-SecretConSysmon",
+      "role": "sysmon",
+      "status": "PARTIAL",
+      "powershell_source": "SecretCon.Bootstrap.psm1"
+    },
+    {
+      "concern": "Install-SecretConWazuhAgent",
+      "role": "wazuh_agent",
+      "status": "PARTIAL",
+      "powershell_source": "SecretCon.Bootstrap.psm1"
+    },
+    {
+      "concern": "Register-SecretConLogonSeederTask",
+      "role": "windows_startup_task",
+      "status": "PARTIAL",
+      "powershell_source": "SecretCon.Bootstrap.psm1"
+    },
+    {
+      "concern": "TightVNC MSI + runtime registry",
+      "role": "tightvnc",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_win.ps1"
+    },
+    {
+      "concern": "Wazuh tvnserver tailer + SACL",
+      "role": "tightvnc",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_win.ps1"
+    },
+    {
+      "concern": "Unquoted service path LPE",
+      "role": "ews_lpe_service",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_win.ps1"
+    },
+    {
+      "concern": "Flag staging user/root",
+      "role": "flags",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_win.ps1"
+    },
+    {
+      "concern": "Defender relax scheduled task",
+      "role": "defender_relax",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_win.ps1"
+    },
+    {
+      "concern": "Autologon",
+      "role": "autologon",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_win.ps1"
+    },
+    {
+      "concern": "CysVuln EFS + AIE levers",
+      "role": "cysvuln_efs_installer",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_cysvuln.ps1"
+    },
+    {
+      "concern": "CysVuln AIE registry",
+      "role": "cysvuln_aie_levers",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_cysvuln.ps1"
+    },
+    {
+      "concern": "AS-REP promote + enite",
+      "role": "asrep_promote",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_asrep.ps1"
+    },
+    {
+      "concern": "AS-REP users and flags",
+      "role": "asrep_users_and_flags",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_asrep.ps1"
+    },
+    {
+      "concern": "DC promote",
+      "role": "dc_promote",
+      "status": "PARTIAL",
+      "powershell_source": "bootstrap_dc.ps1"
+    }
+  ],
+  "summary": {
+    "covered": 0,
+    "partial": 14,
+    "missing": 0
+  },
+  "existing_roles": [
+    "asrep_promote",
+    "asrep_users_and_flags",
+    "autologon",
+    "cysvuln_aie_levers",
+    "cysvuln_efs_installer",
+    "dc_promote",
+    "defender_relax",
+    "ews_lpe_service",
+    "flags",
+    "sysmon",
+    "tightvnc",
+    "wazuh_agent",
+    "windows_startup_task"
+  ]
+}

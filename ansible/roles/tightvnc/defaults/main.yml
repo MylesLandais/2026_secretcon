@@ -1,0 +1,49 @@
+---
+# TightVNC role defaults. Per-host overrides (blacklist for stress runs)
+# live in host_vars/<host>.yml.
+
+tightvnc_version: "2.8.87"
+tightvnc_password: "{{ lookup('env', 'VNC_PW') | default('FELDTECH_VNC', true) }}"
+tightvnc_loglevel: 5
+tightvnc_save_log_to_all_users_path: 1
+
+tightvnc_install_dir: 'C:\secretcon'
+tightvnc_msi_filename: "tightvnc-{{ tightvnc_version }}-gpl-setup-64bit.msi"
+tightvnc_msi_dest: "{{ tightvnc_install_dir }}\\{{ tightvnc_msi_filename }}"
+tightvnc_msi_url: "https://www.tightvnc.com/download/{{ tightvnc_version }}/{{ tightvnc_msi_filename }}"
+
+# Registry roots that the service honors at runtime (verified per
+# bootstrap_win.ps1:117-122 on tvnserver 2.7.10 and 2.8.87).
+tightvnc_reg_path: 'HKLM:\SOFTWARE\TightVNC\Server'
+
+tightvnc_service_name: tvnserver
+tightvnc_log_path: 'C:\ProgramData\TightVNC\tvnserver.log'
+
+tightvnc_firewall_rule_name: SecretCon-TightVNC-In-TCP
+tightvnc_firewall_rule_display_name: SecretCon TightVNC Server
+tightvnc_listen_port: 5900
+
+# Player foothold: VNC password only (no separate control-password prompt).
+tightvnc_use_control_authentication: 0
+
+# RFB security types advertised to clients (2 = VncAuth / 8-byte DES).
+tightvnc_security_type: 2
+tightvnc_prefer_auth: 2
+
+# SecLists default-VNC wordlist has 41 entries; 100 allows a full hydra -t 1 run
+# plus retries. ews-prod host_vars may override higher for stress campaigns.
+tightvnc_blacklist_threshold: 100
+tightvnc_blacklist_timeout: 0
+
+# Controller path to vendored wordlist (preflight asserts password membership).
+tightvnc_wordlist_path: "{{ role_path }}/../../../provisioning/wordlists/vnc-betterdefaultpasslist.txt"
+
+# Wazuh tailer destination. Paired with the <command> stanza in
+# infrastructure/wazuh-docker/config/wazuh_cluster/shared/ews/agent.conf
+# and rule 100801. The role drops the file under C:\secretcon to mirror
+# bootstrap_win.ps1's existing layout.
+tightvnc_tailer_filename: wazuh-tvnserver-tail.ps1
+tightvnc_tailer_dest: "{{ tightvnc_install_dir }}\\{{ tightvnc_tailer_filename }}"
+
+tightvnc_cred_tool_path: "{{ role_path }}/../../../scripts/observability/vnc-cred-tool.py"
+tightvnc_force_reinstall: false

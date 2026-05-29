@@ -1,0 +1,50 @@
+---
+# User flag logon task + root flag (ews-010, ews-012).
+
+- name: Base64-encode user flag for seeder script
+  ansible.builtin.set_fact:
+    flags_user_flag_b64: "{{ secretcon_user_flag | b64encode }}"
+
+- name: Ensure SecretCon install directory for flag scripts
+  ansible.windows.win_file:
+    path: "{{ flags_install_dir }}"
+    state: directory
+
+- name: Deploy user-flag seeder script
+  ansible.windows.win_template:
+    src: seed-user-flag.ps1.j2
+    dest: "{{ flags_ews_user_flag_script }}"
+  when: flags_enable_user_logon_task | bool
+
+- name: Register user-flag logon scheduled task
+  ansible.builtin.include_role:
+    name: windows_startup_task
+  vars:
+    windows_startup_task_name: "{{ flags_ews_user_flag_task }}"
+    windows_startup_task_script: "{{ flags_ews_user_flag_script }}"
+    windows_startup_task_description: SecretCon user flag seeder
+    windows_startup_task_trigger: logon
+    windows_startup_task_user: "{{ flags_ews_user_name }}"
+    windows_startup_task_logon_user: "{{ flags_ews_user_name }}"
+    windows_startup_task_run_level: limited
+    windows_startup_task_arguments: '-NoProfile -ExecutionPolicy Bypass -File "{{ flags_ews_user_flag_script }}"'
+  when: flags_enable_user_logon_task | bool
+
+- name: Ensure Administrator desktop directory exists
+  ansible.windows.win_file:
+    path: "{{ flags_administrator_desktop }}"
+    state: directory
+
+- name: Write root flag artifact
+  ansible.windows.win_copy:
+    dest: "{{ flags_root_path }}"
+    content: "{{ secretcon_root_flag }}"
+  no_log: true
+
+- name: Restrict root flag ACLs
+  ansible.windows.win_command: >-
+    icacls "{{ flags_root_path }}"
+    /inheritance:r
+    /grant "SYSTEM:F" "Administrators:F"
+  changed_when: false
+  when: not ansible_check_mode

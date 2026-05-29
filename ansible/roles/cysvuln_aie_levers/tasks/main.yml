@@ -1,0 +1,12 @@
+---
+# cysvuln_aie_levers role (scaffold — migration step 5).
+# Parity: cyv-005–008, cyv-016, cyv-019–020, cyv-024–027, cyv-029
+#
+# Port blocks: hive prompt suppression (reg load), WU services, User_Joe +
+# HKCU AIE pre-seed, secedit interactive/RDP, HKLM AIE + UAC, Defender,
+# SRP removal, PsExec + validation artifacts.
+
+- name: CysVuln AIE levers role not yet implemented
+  ansible.builtin.debug:
+    msg: Scaffold only — see ansible-parity-matrix.md cyv-005+
+  when: false

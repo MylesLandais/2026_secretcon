@@ -1,0 +1,26 @@
+---
+# AlwaysInstallElevated + UAC + Joe hive + Defender/SRP (cyv-005–008, 016, 019–020, 024–027, 029).
+
+cysvuln_joe_user: User_Joe
+cysvuln_joe_password: "{{ lookup('env', 'CYSVULN_JOE_PASSWORD') | default('VeryStrongPassword123!@#', true) }}"
+
+cysvuln_installer_policy_path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer'
+cysvuln_uac_policy_path: 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+
+cysvuln_aie_hklm_always_install_elevated: 1
+cysvuln_aie_disable_user_installs: 0
+cysvuln_aie_disable_msi: 0
+cysvuln_uac_consent_prompt_behavior_admin: 0
+cysvuln_uac_prompt_on_secure_desktop: 0
+
+cysvuln_disable_services:
+  - wuauserv
+  - UsoSvc
+  - WaaSMedicSvc
+
+cysvuln_psexec_target: 'C:\Users\Public\PsExec.exe'
+cysvuln_aie_validation_msi: 'C:\Users\Public\aie-validation-payload.msi'
+cysvuln_aie_validation_script: 'C:\secretcon\validate-aie.ps1'
+
+cysvuln_srp_key: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers'
+cysvuln_remove_srp: true

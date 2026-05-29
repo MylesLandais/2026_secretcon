@@ -1,0 +1,30 @@
+{
+  "generated": "2026-05-27T13:45:42Z",
+  "ews": {
+    "proxmox_count": 10,
+    "qemu_count": 7,
+    "only_proxmox": [
+      "provisioning/proxmox-static-ip.txt",
+      "provisioning/proxmox/autounattend.xml",
+      "provisioning/proxmox/setstatic.ps1"
+    ],
+    "only_qemu": [],
+    "qemu_subset_of_proxmox": true
+  },
+  "cysvuln": {
+    "proxmox_count": 12,
+    "qemu_count": 11,
+    "only_proxmox": [
+      "provisioning/cysvuln/autounattend.xml"
+    ],
+    "only_qemu": [],
+    "qemu_subset_of_proxmox": true
+  },
+  "asrep": {
+    "proxmox_count": 5,
+    "qemu_count": 5,
+    "only_proxmox": [],
+    "only_qemu": [],
+    "qemu_subset_of_proxmox": true
+  }
+}

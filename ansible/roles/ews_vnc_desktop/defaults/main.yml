@@ -1,0 +1,7 @@
+---
+# Keep an interactive desktop for TightVNC foothold (no lock / sleep / screensaver).
+
+ews_vnc_desktop_enabled: true
+
+# User that auto-logs on (must match autologon role).
+ews_vnc_desktop_user_name: "{{ autologon_user_name | default('patrick') }}"

@@ -1,0 +1,18 @@
+---
+# AS-REP enite user, decoys, flags (asr-017–020).
+
+asrep_asrep_user: "{{ lookup('env', 'SECRETCON_ASREP_USER') | default('enite', true) }}"
+asrep_asrep_password: "{{ lookup('env', 'SECRETCON_ASREP_PASSWORD') | default('stud87', true) }}"
+asrep_enite_domain_admin: "{{ lookup('env', 'SECRETCON_ASREP_ENITE_DA') | default('1', true) | bool }}"
+
+asrep_user_flag: "{{ lookup('env', 'SECRETCON_DC_USER_FLAG') | default(lookup('env', 'SECRETCON_ASREP_FLAG') | default('asrep-user-flag-placeholder', true), true) }}"
+asrep_root_flag: "{{ lookup('env', 'SECRETCON_DC_ROOT_FLAG') | default('asrep-root-flag-placeholder', true) }}"
+
+asrep_decoy_users:
+  - jdoe
+  - asmith
+  - bwilson
+  - clee
+  - dpark
+
+asrep_kerberos_encryption: RC4

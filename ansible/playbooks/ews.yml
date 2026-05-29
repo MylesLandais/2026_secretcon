@@ -1,0 +1,41 @@
+---
+# EWS convergence playbook — canonical in-VM state for Win10 EWS challenge VM.
+- name: Converge EWS Windows challenge VM
+  hosts: ews
+  gather_facts: true
+  any_errors_fatal: true
+
+  pre_tasks:
+    - name: Align local Administrator password with campaign shared-admin pivot
+      ansible.windows.win_user:
+        name: Administrator
+        password: "{{ secretcon_shared_local_admin_password }}"
+        state: present
+      no_log: true
+      tags: [always, campaign_shared_admin]
+
+  roles:
+    - role: proxmox_guest_agent
+      tags: [proxmox_guest_agent, hypervisor]
+    - role: sysmon
+      tags: [sysmon, telemetry]
+    - role: wazuh_agent
+      tags: [wazuh_agent, telemetry]
+    - role: ultravnc
+      tags: [ultravnc, foothold]
+    - role: ews_lpe_service
+      tags: [ews_lpe_service, ews_lpe_reset, privesc]
+    - role: flags
+      tags: [flags]
+    - role: ews_reset_task
+      tags: [ews_reset_task, ews_lpe_reset, privesc, foothold]
+    - role: defender_relax
+      tags: [defender_relax]
+    - role: autologon
+      tags: [autologon]
+    - role: ews_vnc_desktop
+      tags: [ews_vnc_desktop, foothold]
+    - role: ews_network
+      tags: [ews_network, foothold]
+    - role: windows_activation
+      tags: [windows_activation]

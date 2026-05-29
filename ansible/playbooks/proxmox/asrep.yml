@@ -1,0 +1,61 @@
+---
+# AS-REP DC VM create on Proxmox (ISO install path). PROVISION CD + post-install stay in deploy-asrep.sh.
+- name: Create ASREP VM on Proxmox
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    asrep_vmid: "{{ lookup('env', 'VMID') | default('112', true) | int }}"
+    asrep_vm_name: "{{ lookup('env', 'VM_NAME') | default('secretcon-asrep-proxmox-' ~ (lookup('env', 'VMID') | default('112', true)), true) }}"
+    asrep_provision_iso: "secretcon-asrep-prov-{{ lookup('env', 'VMID') | default('112', true) }}.iso"
+
+  tasks:
+    - name: Require Proxmox API password
+      ansible.builtin.assert:
+        that:
+          - proxmox_api_password | length > 0
+
+    - name: Tear down existing ASREP VM
+      ansible.builtin.include_role:
+        name: proxmox_vm_destroy
+      vars:
+        proxmox_destroy_vmid: "{{ asrep_vmid }}"
+
+    - name: Create ASREP VM with install ISOs
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ asrep_vmid }}"
+        name: "{{ asrep_vm_name }}"
+        state: present
+        memory: 8192
+        cores: 2
+        sockets: 1
+        cpu: x86-64-v2-AES
+        machine: pc-i440fx-10.1
+        bios: seabios
+        ostype: win10
+        scsihw: virtio-scsi-single
+        boot: "order=ide0;ide2;net0"
+        net:
+          net0: "e1000,bridge=vmbr1,firewall=1"
+        ide:
+          ide2: "local:iso/windows-server-2016.iso,media=cdrom"
+          ide3: "local:iso/{{ asrep_provision_iso }},media=cdrom"
+        scsi:
+          scsi0: "local-lvm:40,backup=0,cache=writeback,discard=on"
+      when: not ansible_check_mode
+
+    - name: Start ASREP VM
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_timeout: "{{ proxmox_api_timeout }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ asrep_vmid }}"
+        state: started
+      when: not ansible_check_mode

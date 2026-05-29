@@ -1,0 +1,6 @@
+---
+- name: restart tvnserver
+  ansible.windows.win_service:
+    name: "{{ tightvnc_service_name }}"
+    state: restarted
+  listen: "tightvnc service config changed"

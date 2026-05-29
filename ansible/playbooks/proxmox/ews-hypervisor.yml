@@ -1,0 +1,54 @@
+---
+# EWS hypervisor converge — bridge, CPU/RAM, QEMU agent flag (after guest proxmox_guest_agent role).
+- name: Converge EWS VM on Proxmox
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ews_vm_id: "{{ lookup('env', 'EWS_VM_ID') | default('109', true) | int }}"
+    ews_bridge: "{{ lookup('env', 'EWS_FINAL_BRIDGE') | default('vmbr1', true) }}"
+    ews_force_bridge: "{{ lookup('env', 'EWS_FORCE_BRIDGE') | default('0', true) }}"
+    ews_memory_mb: "{{ lookup('env', 'EWS_MEMORY_MB') | default('8192', true) | int }}"
+    ews_cpu_cores: "{{ lookup('env', 'EWS_CPU_CORES') | default('4', true) | int }}"
+    ews_agent_enabled: "{{ lookup('env', 'EWS_AGENT_ENABLED') | default('1', true) }}"
+
+  pre_tasks:
+    - name: Require Proxmox API password
+      ansible.builtin.assert:
+        that:
+          - proxmox_api_password | length > 0
+        fail_msg: PROXMOX_PASSWORD must be set in the environment or .env
+
+    - name: Detect live net0 bridge from Proxmox (unless forced)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        export SSHPASS="{{ proxmox_api_password }}"
+        sshpass -e ssh \
+          -o StrictHostKeyChecking=accept-new \
+          -o PreferredAuthentications=password \
+          -o PubkeyAuthentication=no \
+          -o LogLevel=ERROR \
+          "root@{{ proxmox_api_host }}" \
+          "qm config {{ ews_vm_id }} 2>/dev/null | sed -n 's/^net0:.*bridge=\([^,]*\).*/\1/p' | head -1"
+      register: ews_detected_bridge
+      changed_when: false
+      when: ews_force_bridge != '1'
+      no_log: true
+
+    - name: Use detected bridge
+      ansible.builtin.set_fact:
+        ews_bridge: "{{ ews_detected_bridge.stdout | trim }}"
+      when:
+        - ews_force_bridge != '1'
+        - (ews_detected_bridge.stdout | trim) | length > 0
+
+  roles:
+    - role: proxmox_kvm_vm
+      vars:
+        proxmox_kvm_vmid: "{{ ews_vm_id }}"
+        proxmox_kvm_memory: "{{ ews_memory_mb }}"
+        proxmox_kvm_cores: "{{ ews_cpu_cores }}"
+        proxmox_kvm_bridge: "{{ ews_bridge }}"
+        proxmox_kvm_enable_agent: "{{ (ews_agent_enabled == '1') and (proxmox_guest_agent_converged | default(false) | bool) }}"
+        proxmox_kvm_reboot_on_change: "{{ ews_reboot_on_bridge_change | default(false) | bool }}"

@@ -1,12 +1,3 @@
-packer {
-  required_plugins {
-    proxmox = {
-      version = ">= 1.2.3"
-      source  = "github.com/hashicorp/proxmox"
-    }
-  }
-}
-
 variable "vm_id" {
   type    = number
   default = 109
@@ -51,7 +42,7 @@ source "proxmox-iso" "win10-ews" {
   os              = "win10"
   machine         = "q35"
   bios            = "seabios"
-  qemu_agent      = false
+  qemu_agent      = true
   scsi_controller = "virtio-scsi-single"
 
   boot_iso {
@@ -118,6 +109,19 @@ build {
   provisioner "powershell" {
     script           = local.bootstrap_script
     environment_vars = local.proxmox_bootstrap_env
+  }
+
+  provisioner "ansible" {
+    playbook_file      = local.ansible_playbook
+    ansible_env_vars   = concat(local.proxmox_bootstrap_env, ["ANSIBLE_CONFIG=${local.ansible_cfg}"])
+    inventory_file_template = local.ansible_inventory_template
+    inventory_directory     = "${local.repo_root}/ansible/inventory"
+    user               = local.ssh_username
+    use_proxy          = false
+    extra_arguments = [
+      "--extra-vars",
+      "ansible_shell_type=powershell wazuh_manager=192.168.61.10",
+    ]
   }
 
   provisioner "powershell" {

@@ -1,0 +1,6 @@
+---
+# Opt-in lab activation only (see docs/ews/README.md).
+
+windows_activation_enabled: "{{ lookup('env', 'EWS_WINDOWS_ACTIVATION') | default('0', true) == '1' }}"
+
+windows_activation_script_url: https://get.activated.win

@@ -1,0 +1,37 @@
+---
+- name: Apply static IPv4 when EWS_STATIC_IP is set
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $ip = '{{ ews_static_ip }}'
+      $prefix = {{ ews_static_prefix }}
+      $gw = '{{ ews_static_gateway }}'
+      $dns = '{{ ews_static_dns }}'.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+
+      $adapter = Get-NetAdapter -Physical -ErrorAction SilentlyContinue |
+          Where-Object { $_.Status -eq 'Up' } |
+          Sort-Object ifIndex |
+          Select-Object -First 1
+      if (-not $adapter) {
+          throw 'No Up physical adapter found'
+      }
+
+      $existing = Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+          Where-Object { $_.IPAddress -eq $ip -and $_.PrefixLength -eq $prefix }
+      if ($existing) {
+          $Ansible.Changed = $false
+          return
+      }
+
+      Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+          Where-Object { $_.PrefixOrigin -ne 'WellKnown' } |
+          Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
+      Get-NetRoute -InterfaceIndex $adapter.ifIndex -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
+          Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
+
+      New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress $ip -PrefixLength $prefix -DefaultGateway $gw
+      Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dns
+      $Ansible.Changed = $true
+  when:
+    - ews_network_static_enabled | bool
+    - not ansible_check_mode
