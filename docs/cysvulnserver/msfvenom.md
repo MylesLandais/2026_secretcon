@@ -4,7 +4,7 @@ End-to-end demonstration that a stock
 [msfvenom](https://docs.metasploit.com/docs/using-metasploit/basics/how-to-use-msfvenom.html)
 MSI elevates to `SYSTEM` via `AlwaysInstallElevated` on this box. The
 attacker tool that the player-walkthrough recipe at
-[walkthrough.md](walkthrough.md) phase 7 always implied but was never
+[attack-faq-walkthrough.md](attack-faq-walkthrough.md) phase 7 always implied but was never
 actually exercised in tree before this writeup. Companion to
 [winpeas.md](winpeas.md) / [sharpup.md](sharpup.md) (enumeration) and
 [scripts/validate/check_aie_response.py](../../scripts/validate/check_aie_response.py)
@@ -82,7 +82,7 @@ the trigger context is **different**:
 | Step | Mechanism | Why |
 |---|---|---|
 | Stage MSI on victim | Administrator WinRM + temp HTTP server on the host (OS-picked free port) | Avoids the WinRM `MaxEnvelopeSize` 413 limit on base64 uploads; reuses [joe_task_runner.upload_binary_via_http](../../scripts/validate/joe_task_runner.py). |
-| Trigger msiexec | PsExec `-i <sid>` into an existing RDP session for `User_Joe` | `msiexec` returns **1601** (installer service access denied) for non-interactive logon types — see Phase 7 callout at [walkthrough.md](walkthrough.md). Task Scheduler is therefore a dead-end here, even though it works fine for enumerator binaries like winPEAS / SharpUp. |
+| Trigger msiexec | PsExec `-i <sid>` into an existing RDP session for `User_Joe` | `msiexec` returns **1601** (installer service access denied) for non-interactive logon types — see Phase 7 callout at [attack-faq-walkthrough.md](attack-faq-walkthrough.md). Task Scheduler is therefore a dead-end here, even though it works fine for enumerator binaries like winPEAS / SharpUp. |
 | Poll for evidence | Administrator WinRM read of `aie-msfvenom-flag.txt` + cross-check vs `root.txt` | Cheap, reuses [run_aie_as_joe_interactive.py](../../scripts/validate/run_aie_as_joe_interactive.py)'s `poll_flag` (now parameterised over the flag/log paths). |
 
 If `User_Joe` does not already have an interactive session,
@@ -219,7 +219,7 @@ got reverted in one of the hives).
 
 ## Cross-references
 
-- [docs/cysvulnserver/walkthrough.md](walkthrough.md) — full player chain (Phase 7 documents the msiexec interactive-logon constraint)
+- [docs/cysvulnserver/attack-faq-walkthrough.md](walkthrough.md) — full player chain (Phase 7 documents the msiexec interactive-logon constraint)
 - [docs/cysvulnserver/winpeas.md](winpeas.md), [docs/cysvulnserver/sharpup.md](sharpup.md) — enumeration tools that flag AIE before this runner exploits it
 - [scripts/validate/audit_aie.py](../../scripts/validate/audit_aie.py) — registry-only AIE indicator (the prediction this runner confirms)
 - [scripts/validate/check_aie_response.py](../../scripts/validate/check_aie_response.py) — wixl-based MSI builder used by the chain validator

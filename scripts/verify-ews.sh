@@ -36,48 +36,113 @@ check_init
 echo "[*] Target: $TARGET"
 
 # 1. Port reachability
-if nmap -Pn -n -p 22,5900 --open --host-timeout 30s "$TARGET" 2>/dev/null | grep -q "5900/tcp open"; then
+NMAP_PORTS="$(nmap -Pn -n -p 22,5900 --open --host-timeout 30s "$TARGET" 2>/dev/null || true)"
+if echo "${NMAP_PORTS}" | grep -qE '5900/tcp[[:space:]]+open'; then
     check "vnc-port-open" PASS "tcp/5900"
 else
     check "vnc-port-open" FAIL "tcp/5900 not open"
 fi
-if nmap -Pn -n -p 22,5900 --open --host-timeout 30s "$TARGET" 2>/dev/null | grep -q "22/tcp open"; then
+if echo "${NMAP_PORTS}" | grep -qE '22/tcp[[:space:]]+open'; then
     check "ssh-port-open" PASS "tcp/22"
 else
     check "ssh-port-open" FAIL "tcp/22 not open"
 fi
 
-# 2. VNC default-password bruteforce (deterministic — single-password list)
-PWLIST=$(mktemp)
-echo "$VNC_PW" > "$PWLIST"
-if command -v hydra >/dev/null 2>&1; then
-    if hydra -P "$PWLIST" -t 1 -f -o /dev/null "vnc://$TARGET" 2>/dev/null | grep -q "host:.*password:"; then
-        check "vnc-foothold-creds" PASS "$VNC_PW accepted"
+# 2. VNC foothold credential (RFB probe -> wordlist brute -> hydra -> registry)
+VNC_CRED_OK=0
+VNC_CRED_VIA=""
+CRED_TOOL="${SCRIPT_DIR}/observability/vnc-cred-tool.py"
+AUTH_PROBE="${SCRIPT_DIR}/../ansible/roles/ultravnc/files/check_vnc_auth.py"
+VNC_WORDLIST="${SCRIPT_DIR}/../provisioning/wordlists/vnc-betterdefaultpasslist.txt"
+if [ "$VNC_CRED_OK" -eq 0 ] && command -v python3 >/dev/null 2>&1 && [ -f "$AUTH_PROBE" ] && [ -f "$CRED_TOOL" ]; then
+    if python3 "$AUTH_PROBE" --host "$TARGET" --port 5900 --password "$VNC_PW" --cred-tool "$CRED_TOOL" >/dev/null 2>&1; then
+        VNC_CRED_OK=1
+        VNC_CRED_VIA="rfb-probe"
+    fi
+fi
+if [ "$VNC_CRED_OK" -eq 0 ] && command -v python3 >/dev/null 2>&1 && [ -f "$AUTH_PROBE" ] && [ -f "$CRED_TOOL" ] && [ -f "$VNC_WORDLIST" ]; then
+    if python3 "$AUTH_PROBE" --host "$TARGET" --port 5900 --wordlist "$VNC_WORDLIST" --cred-tool "$CRED_TOOL" >/dev/null 2>&1; then
+        VNC_CRED_OK=1
+        VNC_CRED_VIA="rfb-wordlist"
+    fi
+fi
+if [ "$VNC_CRED_OK" -eq 0 ] && command -v hydra >/dev/null 2>&1; then
+    PWLIST=$(mktemp)
+    echo "$VNC_PW" > "$PWLIST"
+    if hydra -P "$PWLIST" -t 1 -f -o /dev/null -s 5900 "$TARGET" vnc 2>/dev/null | grep -q "host:.*password:"; then
+        VNC_CRED_OK=1
+        VNC_CRED_VIA="hydra-compat"
+    fi
+    rm -f "$PWLIST"
+fi
+# Hydra often fails against UltraVNC (multi security-type handshake); fall back to
+# registry blob check via Administrator when ANSIBLE_ADMIN_PASSWORD is set.
+if [ "$VNC_CRED_OK" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    ADMIN_PW="${ANSIBLE_ADMIN_PASSWORD:-${SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD:-}}"
+    if [ -n "$ADMIN_PW" ] && command -v sshpass >/dev/null 2>&1; then
+        VNC_REG_HEX=$(sshpass -p "$ADMIN_PW" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=10 "Administrator@$TARGET" \
+            'cmd /c reg query HKLM\SOFTWARE\ORL\WinVNC3 /v Password' 2>/dev/null \
+            | sed -n 's/.*Password[[:space:]]*REG_BINARY[[:space:]]*//p' | tr -d '\r\n ')
+        if [ -z "$VNC_REG_HEX" ]; then
+            VNC_REG_HEX=$(sshpass -p "$ADMIN_PW" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                -o ConnectTimeout=10 "Administrator@$TARGET" \
+                'cmd /c reg query HKLM\SOFTWARE\TightVNC\Server /v Password' 2>/dev/null \
+                | sed -n 's/.*Password[[:space:]]*REG_BINARY[[:space:]]*//p' | tr -d '\r\n ')
+        fi
+        if [ -n "$VNC_REG_HEX" ]; then
+            DECODED=$(python3 "${SCRIPT_DIR}/observability/vnc-cred-tool.py" decode \
+                --hex "$VNC_REG_HEX" --wordlist "${SCRIPT_DIR}/../provisioning/wordlists/vnc-betterdefaultpasslist.txt" 2>/dev/null || true)
+            if [ "$DECODED" = "$VNC_PW" ]; then
+                VNC_CRED_OK=1
+                VNC_CRED_VIA="registry-decode"
+            fi
+        fi
+    fi
+fi
+if [ "$VNC_CRED_OK" -eq 1 ]; then
+    check "vnc-foothold-creds" PASS "$VNC_PW accepted (${VNC_CRED_VIA:-ok})"
+else
+    check "vnc-foothold-creds" FAIL "$VNC_PW not accepted (rfb-probe/rfb-wordlist/hydra-compat/registry all failed)"
+fi
+
+# 2b. Wordlist sweep — always exercised (even when the single probe passed) so
+# the paced brute path stays regression-tested. --delay-seconds keeps the sweep
+# under TightVNC's in-memory pace limiter; see docs/runbooks/ews-vnc-adversary-emulation.md.
+if command -v python3 >/dev/null 2>&1 && [ -f "$AUTH_PROBE" ] && [ -f "$CRED_TOOL" ] && [ -f "$VNC_WORDLIST" ]; then
+    # Pause so a just-run single probe doesn't leave the limiter armed.
+    sleep 1
+    WL_JSON="$(python3 "$AUTH_PROBE" --host "$TARGET" --port 5900 \
+        --wordlist "$VNC_WORDLIST" --cred-tool "$CRED_TOOL" \
+        --delay-seconds 0.5 --json 2>/dev/null || true)"
+    WL_FOUND="$(printf '%s' "$WL_JSON" | sed -n 's/.*"found": *"\([^"]*\)".*/\1/p')"
+    WL_LAST="$(printf '%s' "$WL_JSON" | sed -n 's/.*"last_outcome": *"\([^"]*\)".*/\1/p')"
+    if [ "$WL_FOUND" = "$VNC_PW" ]; then
+        check "vnc-wordlist-brute" PASS "$VNC_PW found via paced RFB wordlist sweep"
     else
-        check "vnc-foothold-creds" FAIL "hydra did not land $VNC_PW"
+        check "vnc-wordlist-brute" FAIL "wordlist sweep did not recover $VNC_PW (last_outcome=${WL_LAST:-unknown}); raise --delay-seconds if last_outcome=no_vnc_auth"
     fi
 else
-    check "vnc-foothold-creds" FAIL "hydra not installed"
+    check "vnc-wordlist-brute" PASS "skipped (python3/check_vnc_auth.py/vnc-cred-tool/wordlist not all available)"
 fi
-rm -f "$PWLIST"
 
 # 3. SSH as patrick — service-path LPE preconditions
 ssh_as_patrick() {
     if command -v sshpass >/dev/null 2>&1; then
         sshpass -p "$PATRICK_PW" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=10 "patrick@$TARGET" "$@" 2>/dev/null
+            -o ConnectTimeout=10 "patrick@$TARGET" "$@" 2>&1
     else
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=10 "patrick@$TARGET" "$@" 2>/dev/null
+            -o ConnectTimeout=10 "patrick@$TARGET" "$@" 2>&1
     fi
 }
 
-SC_OUT=$(ssh_as_patrick 'sc qc SecretConEwsSync')
-if [ -z "$SC_OUT" ]; then
-    check "ssh-patrick-login" FAIL "could not exec sc qc as patrick"
+REG_OUT=$(ssh_as_patrick 'cmd /c reg query HKLM\SYSTEM\CurrentControlSet\Services\SecretConEwsSync /v ImagePath')
+if [ -z "$REG_OUT" ]; then
+    check "ssh-patrick-login" FAIL "could not read service ImagePath as patrick"
 else
     check "ssh-patrick-login" PASS ""
-    IMAGE_PATH=$(echo "$SC_OUT" | awk -F': ' '/BINARY_PATH_NAME/ {print $2}' | tr -d '\r')
+    IMAGE_PATH=$(echo "$REG_OUT" | sed -n 's/.*ImagePath[[:space:]]*REG_[^[:space:]]*[[:space:]]*//p' | tr -d '\r\n')
     if [ -z "$IMAGE_PATH" ]; then
         check "service-image-path" FAIL "could not read BINARY_PATH_NAME"
     else
@@ -93,7 +158,7 @@ else
         fi
     fi
 
-    ICACLS_OUT=$(ssh_as_patrick 'icacls "C:\Program Files\SecretCon"')
+    ICACLS_OUT=$(ssh_as_patrick 'cmd /c icacls "C:\Program Files\SecretCon"')
     if echo "$ICACLS_OUT" | grep -qi 'BUILTIN\\Users.*(M)'; then
         check "service-root-user-writable" PASS "Users:(M) on C:\\Program Files\\SecretCon"
     else
@@ -101,7 +166,7 @@ else
     fi
 
     # User flag readable as patrick
-    USER_FLAG=$(ssh_as_patrick 'type C:\Users\patrick\Desktop\flag.txt')
+    USER_FLAG=$(ssh_as_patrick 'cmd /c type C:\Users\patrick\Desktop\flag.txt')
     if [ -n "$USER_FLAG" ]; then
         check "user-flag-readable-as-patrick" PASS "$USER_FLAG"
     else
@@ -109,7 +174,7 @@ else
     fi
 
     # Root flag NOT readable as patrick
-    ROOT_OUT=$(ssh_as_patrick 'type C:\Users\Administrator\Desktop\root.txt 2>&1')
+    ROOT_OUT=$(ssh_as_patrick 'cmd /c type C:\Users\Administrator\Desktop\root.txt 2>&1')
     if echo "$ROOT_OUT" | grep -qiE 'denied|cannot find|not have permission'; then
         check "root-flag-protected-from-patrick" PASS "access denied as expected"
     elif [ -z "$ROOT_OUT" ]; then

@@ -43,5 +43,5 @@ iter,hash_ok,crack_ok,fired_100700,fired_100701,alert_count,secretcon_rules
 
 ## Next steps
 
-- Fold fire rates into [blue-detection-faq.md](blue-detection-faq.md)
+- Fold fire rates into [defend-faq-walkthrough.md](defend-faq-walkthrough.md)
 - Proxmox replay: `./scripts/proxmox/deploy-asrep.sh` + stress campaign with `--platform proxmox` (future)

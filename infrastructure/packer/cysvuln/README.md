@@ -1,5 +1,7 @@
 # CysVuln Packer recipes
 
+> **Transitional** — see [ansible-opentofu-migration.md](../../../docs/refactor/ansible-opentofu-migration.md), [ansible-parity-matrix.md](../../../docs/refactor/ansible-parity-matrix.md).
+
 Windows Server 2016 CysVulnServer challenge — one recipe per hypervisor, shared bootstrap.
 
 | File | Builder | Output |
@@ -16,7 +18,7 @@ check Hyper-V recipes without a real PROVISION ISO.
 
 ## Manifests
 
-- `provision-manifest-cysvuln.txt` — autounattend + cysvuln-only files
+- `provision-manifest-cysvuln.txt` — `provisioning/cysvuln/autounattend.xml` only
 - `provision-manifest-shared.txt` — OpenSSH, EFS installer, Sysmon, AIE MSI, bootstrap module
 
 Hyper-V: run `scripts/build-provision-iso.ps1` then pass `-var cysvuln_provision_iso=...`.

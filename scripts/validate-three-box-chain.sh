@@ -4,7 +4,11 @@ set -uo pipefail
 # End-to-end three-box campaign validation (CysVuln -> EWS -> ASREP DC).
 #
 # Usage:
-#   ./scripts/validate-three-box-chain.sh [--siem]
+#   ./scripts/validate-three-box-chain.sh [--siem] [--pivot]
+#
+# Flags:
+#   --siem   drain Wazuh alerts after the chain checks and assert chain rules
+#   --pivot  run the EWS->DC AS-REP pivot harness after the standard checks
 #
 # Environment (defaults for Proxmox vmbr1 campaign):
 #   CHAIN_CYSVULN_IP   192.168.61.51
@@ -15,12 +19,17 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/chain_env.sh
 source "${REPO_ROOT}/scripts/lib/chain_env.sh"
+# shellcheck source=lib/check-harness.sh
+source "${REPO_ROOT}/scripts/lib/check-harness.sh"
+check_init
 
 SIEM=0
+PIVOT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --siem) SIEM=1; shift ;;
-    -h|--help) sed -n '3,18p' "$0"; exit 0 ;;
+    --pivot) PIVOT=1; shift ;;
+    -h|--help) sed -n '3,21p' "$0"; exit 0 ;;
     *) echo "[!] unknown flag: $1" >&2; exit 2 ;;
   esac
 done
@@ -34,10 +43,8 @@ echo "[*] three-box chain validation"
 echo "[*] CysVuln=${CHAIN_CYSVULN_IP} EWS=${CHAIN_EWS_IP} DC=${CHAIN_DC_IP}"
 echo "[*] log: $LOG"
 
-PASS=0
-FAIL=0
-ok() { echo "[+] PASS: $1"; PASS=$((PASS + 1)); }
-bad() { echo "[!] FAIL: $1" >&2; FAIL=$((FAIL + 1)); }
+ok() { check "$1" PASS; }
+bad() { check "$1" FAIL; }
 step() { echo; echo "===== $1 ====="; }
 
 step "per-box smoke (chain mode)"
@@ -125,9 +132,19 @@ if [ "$SIEM" -eq 1 ]; then
   fi
 fi
 
-echo
-echo "===== validate-three-box-chain ====="
-echo "  $PASS pass / $FAIL fail"
-echo "  finished: $(date -Is)"
-echo "===================================="
-[ "$FAIL" -eq 0 ]
+if [ "$PIVOT" -eq 1 ]; then
+  step "EWS -> DC AS-REP pivot (--pivot)"
+  PIVOT_RUN_ID="${PIVOT_RUN_ID:-pivot-$(date -u +%Y%m%dT%H%M%SZ)}"
+  PIVOT_OUT="${OUT_DIR}/pivot/${PIVOT_RUN_ID}"
+  mkdir -p "$PIVOT_OUT"
+  PIVOT_FLAGS=()
+  if [ "$SIEM" -eq 0 ]; then PIVOT_FLAGS+=(--skip-wazuh); fi
+  if "${REPO_ROOT}/scripts/observability/ews-asrep-pivot.sh" \
+       --run-id "$PIVOT_RUN_ID" "${PIVOT_FLAGS[@]}"; then
+    ok "ews-asrep-pivot 7/7"
+  else
+    bad "ews-asrep-pivot (see artifacts/campaign/pivot/${PIVOT_RUN_ID}/scorecard.json)"
+  fi
+fi
+
+check_summary "validate-three-box-chain"

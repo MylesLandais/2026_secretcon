@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<!--
+  SecretCon OPNsense config.xml placeholder.
+
+  This file gets replaced by the sanitized export from the live OPNsense
+  VM the first time an operator runs:
+
+      provisioning/opnsense/scripts/export-config.sh
+
+  Do NOT hand-edit this file. The export script strips API keys,
+  certificate private keys, password hashes, and operator emails (full
+  list in provisioning/opnsense/README.md "What gets sanitized") and
+  replaces each with __SECRETCON_STRIPPED__. On a rebuild-from-zero,
+  the operator restores via System -> Configuration -> Backups -> Restore
+  configuration, then re-enters the stripped values manually.
+
+  The reason this file exists at all (rather than .gitignore'd) is so
+  that:
+    1. A reviewer can see what changed between snapshots.
+    2. A fresh clone has a known restore point even if the live VM is
+       unreachable when the rebuild starts.
+    3. Git tracks the OPNsense-side state alongside the host-side
+       (scripts/proxmox/enable-vmbr1-mirror.sh) and Wazuh-side
+       (infrastructure/wazuh-docker/config/wazuh_cluster/local_rules.xml)
+       configs that together implement the vmbr1-mirror plan.
+-->
+<opnsense>
+  <!-- placeholder; replaced by export-config.sh -->
+</opnsense>

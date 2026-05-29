@@ -111,7 +111,7 @@ This script does not send EDB exploits or run the MSI privesc chain.
 
 Manual or scripted chain validation:
 
-- [docs/cysvulnserver/walkthrough.md](../cysvulnserver/walkthrough.md)
+- [docs/cysvulnserver/attack-faq-walkthrough.md](../cysvulnserver/walkthrough.md)
 - `scripts/validate/check_efs69_response.py` (EFS HTTP)
 - `scripts/validate-cysvuln-chain.sh` (full chain, needs a running VM)
 - Reference PoCs: `scripts/validate/reference/`

@@ -12,12 +12,27 @@ cd "$REPO_ROOT"
 FAIL=0
 pass() { echo "PASS  $1"; }
 fail() { echo "FAIL  $1"; FAIL=$((FAIL + 1)); }
+skip() { echo "SKIP  $1"; }
 
-echo "[*] pytest (request builder unit tests)"
+echo "[*] pytest (request builder + VNC crypto unit tests)"
 if python3 -m pytest scripts/validate/tests -q; then
     pass "pytest"
 else
     fail "pytest"
+fi
+
+echo "[*] vnc kali-tool static audit"
+if python3 scripts/validate/audit-vnc-kali-tools.py; then
+    pass "audit-vnc-kali-tools"
+else
+    fail "audit-vnc-kali-tools"
+fi
+
+echo "[*] vnc-cred-tool self-test"
+if python3 scripts/observability/vnc-cred-tool.py self-test; then
+    pass "vnc-cred-tool self-test"
+else
+    fail "vnc-cred-tool self-test"
 fi
 
 echo "[*] packer validate (syntax)"
@@ -29,31 +44,41 @@ if command -v packer >/dev/null 2>&1; then
         -var 'proxmox_password=packer'
     )
     validate_packer_dir() {
-        local pdir="$1"
-        shift
+        local label="$1"
+        local pdir="$2"
+        shift 2
         local extra_vars=("$@")
         if [ ! -d "$pdir" ] || ! ls "$pdir"/*.pkr.hcl >/dev/null 2>&1; then
             return 0
         fi
-        # QEMU local build leaves output/ behind; validate refuses existing output dirs.
-        rm -rf "${pdir}/output" 2>/dev/null || true
+        rm -rf "${pdir}/output" "${pdir}/packer-output" 2>/dev/null || true
         if ( cd "$pdir" && packer init . >/dev/null 2>&1 && packer validate "${extra_vars[@]}" . ); then
-            pass "packer validate $(basename "$pdir")"
-        else
-            fail "packer validate $(basename "$pdir")"
+            pass "packer validate ${label}"
+            return 0
         fi
+        return 1
     }
-    validate_packer_dir "${REPO_ROOT}/infrastructure/packer" "${PACKER_PROXMOX_VARS[@]}"
-    validate_packer_dir "${REPO_ROOT}/infrastructure/packer/cysvuln" \
+    validate_packer_dir packer "${REPO_ROOT}/infrastructure/packer" "${PACKER_PROXMOX_VARS[@]}" \
+        || fail "packer validate packer"
+    validate_packer_dir cysvuln "${REPO_ROOT}/infrastructure/packer/cysvuln" \
         "${PACKER_PROXMOX_VARS[@]}" \
         -var 'cysvuln_iso_url=file:///dev/null' \
-        -var 'cysvuln_iso_checksum=none'
-    validate_packer_dir "${REPO_ROOT}/infrastructure/packer/dc" "${PACKER_PROXMOX_VARS[@]}"
-    validate_packer_dir "${REPO_ROOT}/infrastructure/packer/ews" \
+        -var 'cysvuln_iso_checksum=none' \
+        || fail "packer validate cysvuln"
+    if ! validate_packer_dir asrep "${REPO_ROOT}/infrastructure/packer/asrep" \
         "${PACKER_PROXMOX_VARS[@]}" \
-        -var 'iso_url=file:///dev/null'
+        -var 'asrep_iso_url=file:///dev/null' \
+        -var 'asrep_iso_checksum=none'; then
+        fail "packer validate asrep"
+    fi
+    validate_packer_dir dc "${REPO_ROOT}/infrastructure/packer/dc" "${PACKER_PROXMOX_VARS[@]}" \
+        || fail "packer validate dc"
+    validate_packer_dir ews "${REPO_ROOT}/infrastructure/packer/ews" \
+        "${PACKER_PROXMOX_VARS[@]}" \
+        -var 'iso_url=file:///dev/null' \
+        || fail "packer validate ews"
 else
-    echo "SKIP  packer not on PATH (run nix develop)"
+    skip "packer not on PATH (run nix develop)"
 fi
 
 echo "[*] bash syntax"
@@ -77,7 +102,7 @@ while IFS= read -r path; do
         # binaries may be absent until fetch-cysvuln-artifacts.sh
         case "$path" in
             *.exe|*.msi)
-                echo "SKIP  missing binary $(basename "$path") (run fetch-cysvuln-artifacts.sh)"
+                skip "missing binary $(basename "$path") (run fetch-cysvuln-artifacts.sh)"
                 ;;
             *)
                 fail "missing $path"
@@ -89,12 +114,81 @@ done < <(
     read_provision_manifest "$MANIFEST_SHARED" "$REPO_ROOT"
 )
 
+validate_manifest_pair() {
+    local label="$1"
+    local prox_manifest="$2"
+    local qemu_manifest="$3"
+    local prox_list qemu_list path
+    prox_list="$(mktemp)"
+    qemu_list="$(mktemp)"
+    read_provision_manifest "$prox_manifest" "$REPO_ROOT" > "$prox_list"
+    read_provision_manifest "$qemu_manifest" "$REPO_ROOT" > "$qemu_list"
+    while IFS= read -r path; do
+        if [ -f "$path" ]; then
+            pass "${label} proxmox $(basename "$path")"
+        else
+            case "$path" in
+                *.exe|*.msi|*.zip) skip "${label} missing binary $(basename "$path")" ;;
+                *) fail "${label} missing $path" ;;
+            esac
+        fi
+    done < "$prox_list"
+    while IFS= read -r path; do
+        if grep -Fxq "$path" "$prox_list"; then
+            pass "${label} qemu subset $(basename "$path")"
+        else
+            fail "${label} qemu-only path not in proxmox manifest: $path"
+        fi
+    done < "$qemu_list"
+    rm -f "$prox_list" "$qemu_list"
+}
+
+echo "[*] EWS provision manifests"
+validate_manifest_pair ews \
+    "${REPO_ROOT}/infrastructure/packer/ews/provision-manifest-proxmox.txt" \
+    "${REPO_ROOT}/infrastructure/packer/ews/provision-manifest-qemu.txt"
+
+echo "[*] ASREP provision manifests"
+while IFS= read -r path; do
+    if [ -f "$path" ]; then
+        pass "asrep exists $(basename "$path")"
+    else
+        case "$path" in
+            *.exe|*.msi|*.zip) skip "asrep missing binary $(basename "$path")" ;;
+            *) fail "asrep missing $path" ;;
+        esac
+    fi
+done < <(
+    read_provision_manifest "${REPO_ROOT}/infrastructure/packer/asrep/provision-manifest-asrep.txt" "$REPO_ROOT"
+    read_provision_manifest "${REPO_ROOT}/infrastructure/packer/asrep/provision-manifest-shared.txt" "$REPO_ROOT"
+)
+
+echo "[*] ansible syntax-check (all playbooks)"
+if command -v ansible-playbook >/dev/null 2>&1; then
+    for pb in ews cysvuln asrep dc; do
+        if ( cd ansible && ansible-playbook --syntax-check "playbooks/${pb}.yml" >/dev/null 2>&1 ); then
+            pass "ansible syntax-check ${pb}.yml"
+        else
+            fail "ansible syntax-check ${pb}.yml"
+        fi
+    done
+else
+    skip "ansible-playbook not on PATH (run nix develop)"
+fi
+
+echo "[*] repo-audit env-coverage (non-blocking)"
+if python3 "${REPO_ROOT}/.claude/skills/repo-audit/audit.py" env-coverage >/dev/null 2>&1; then
+    pass "repo-audit env-coverage"
+else
+    skip "repo-audit env-coverage (warning only)"
+fi
+
 echo "[*] text cysvuln artifacts"
 for f in joe-notes.txt admin-notes.txt option.ini; do
     if [ -f "${REPO_ROOT}/infrastructure/artifacts/cysvuln/${f}" ]; then
         pass "$f"
     else
-        fail "$f"
+        skip "$f (run ./scripts/fetch-cysvuln-artifacts.sh)"
     fi
 done
 

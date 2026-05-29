@@ -16,9 +16,9 @@ These are not invoked by Packer or verify scripts.
 
 ## edb-42256-efs-ftp72-msf.rb
 
-- Source: Metasploit module for EFS FTP Server 7.2 (different product line)
-- Use: reference only; the 2026 chain targets EFS Web Server 6.9 on HTTP/80
-- Not part of the default validation path
+- Source: [Exploit-DB 42256](https://www.exploit-db.com/exploits/42256) — Easy File Sharing **HTTP** Server 7.2 POST buffer overflow (`POST /sendemail.ghp`). The Metasploit description text says “FTP Server”; ignore that — the module targets HTTP/80.
+- Use: player-facing hint (seeded in `Notes.txt`) and optional manual MSF reproduction
+- Automated validation uses **EDB-37951** USERID cookie overflow on the **pinned 6.9** installer (`check_efs69_response.py`); gadget overlap is documented in `scripts/validate/request_builder/rop.py`
 
 ## Validate
 

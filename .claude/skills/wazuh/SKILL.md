@@ -46,10 +46,26 @@ Custom rule pack in `config/wazuh_cluster/local_rules.xml`:
      this rule fires Wazuh suppresses the underlying 100508/100509 in
      `alerts.json`, so the stress-campaign blue scorecard credits both
      child rules when 100530 matches.
+   - `100800-100807` — EWS VNC foothold + "previous adversary" trail:
+     `100800` VNC connection burst (Sysmon EID 3); `100801` TightVNC
+     `tvnserver.log` auth failure; `100802` `reg.exe query` against
+     `HKLM\SOFTWARE\TightVNC\Server`; `100803` registry value SET on
+     the password key (baseline-at-bake); `100804` Sysmon EID 11 on
+     `C:\Users\Public\vnc-pwd-dump.txt`; `100805` Security EID 4663
+     Object Access on the TightVNC key (SACL audit hit); `100806`
+     hex blob exfil receipt (`full_log` carries the bytes for direct
+     `vncpasswd.py -d -H` recovery); `100807` velocity correlation
+     (`100800` -> registry-read signal within 15 minutes). Generated
+     once by `scripts/observability/vnc-adversary-emulation.sh`,
+     replayed on every deploy by
+     `scripts/observability/vnc-replay-on-deploy.sh`. Full procedure in
+     `docs/runbooks/ews-vnc-adversary-emulation.md`.
 
    The `ews` agent group's `shared/ews/agent.conf` adds the Sysmon +
    MSI/Operational + `C:\Users\Public\aie-*.log` + EFS access log +
-   `C:\Users\Public\audit-aie-*.json` subscriptions that the
+   `C:\Users\Public\audit-aie-*.json` +
+   `C:\Program Files\TightVNC\tvnserver.log` +
+   `C:\Users\Public\vnc-pwd-dump.txt` subscriptions that the
    SwiftOnSecurity sysmon config alone does not enable on the manager
    side. Manager runs with `<logall_json>yes</logall_json>` so the
    capture loop produces forensic-grade `archives.json` (every decoded

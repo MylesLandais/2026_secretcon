@@ -18,6 +18,12 @@ set -euo pipefail
 #   --out-dir DIR      where to write iter-N/{alerts,archives,msiexec-timeline}.json
 #   --include-archives also dump raw archives.json (default: alerts only)
 #   --container NAME   manager container name (default: $WAZUH_MANAGER_CONTAINER)
+#   --manager-ssh URL  read manager logs via `ssh URL sudo cat`. Format:
+#                      user@host or user@host:port. Supports ProxyJump via
+#                      MANAGER_SSH_PROXY env (passed as -o ProxyCommand=).
+#                      When set, --container is ignored.
+#   --manager-ssh-key KEYPATH  identity file for --manager-ssh (default:
+#                      provisioning/ssh/packer_ed25519)
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/wazuh-common.sh
@@ -29,6 +35,8 @@ UNTIL=""
 OUT_DIR=""
 INCLUDE_ARCHIVES=0
 CONTAINER="${WAZUH_MANAGER_CONTAINER}"
+MANAGER_SSH=""
+MANAGER_SSH_KEY="${REPO_ROOT}/provisioning/ssh/packer_ed25519"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -37,7 +45,9 @@ while [ $# -gt 0 ]; do
         --out-dir) OUT_DIR="$2"; shift 2 ;;
         --include-archives) INCLUDE_ARCHIVES=1; shift ;;
         --container) CONTAINER="$2"; shift 2 ;;
-        -h|--help) sed -n '3,18p' "$0"; exit 0 ;;
+        --manager-ssh) MANAGER_SSH="$2"; shift 2 ;;
+        --manager-ssh-key) MANAGER_SSH_KEY="$2"; shift 2 ;;
+        -h|--help) sed -n '3,24p' "$0"; exit 0 ;;
         *) echo "[!] unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -56,11 +66,41 @@ ARCHIVES_OUT="${OUT_DIR}/archives.json"
 TIMELINE_OUT="${OUT_DIR}/msiexec-timeline.json"
 WIN_FILTER="$(wazuh_window_jq)"
 
-echo "[*] Draining alerts from ${CONTAINER} between ${SINCE} and ${UNTIL}"
+# Per-source `cat` -- docker exec by default, ssh sudo cat when --manager-ssh
+# is provided. The ssh form supports a ProxyCommand via MANAGER_SSH_PROXY,
+# matching the ProxyJump pattern used by scripts/proxmox/* for the Wazuh
+# manager that lives behind the Proxmox host.
+manager_cat() {
+    local remote_path="$1"
+    if [ -n "$MANAGER_SSH" ]; then
+        local ssh_user_host="${MANAGER_SSH%%:*}"
+        local ssh_port="22"
+        case "$MANAGER_SSH" in *:*) ssh_port="${MANAGER_SSH##*:}";; esac
+        local ssh_opts=(
+            -o ConnectTimeout=15
+            -o StrictHostKeyChecking=accept-new
+            -o IdentitiesOnly=yes
+            -i "$MANAGER_SSH_KEY"
+            -p "$ssh_port"
+        )
+        if [ -n "${MANAGER_SSH_PROXY:-}" ]; then
+            ssh_opts+=(-o "ProxyCommand=${MANAGER_SSH_PROXY}")
+        fi
+        ssh "${ssh_opts[@]}" "$ssh_user_host" "sudo cat ${remote_path}" 2>/dev/null
+    else
+        docker exec "${CONTAINER}" cat "${remote_path}" 2>/dev/null
+    fi
+}
+
+if [ -n "$MANAGER_SSH" ]; then
+    echo "[*] Draining alerts from ssh:${MANAGER_SSH} between ${SINCE} and ${UNTIL}"
+else
+    echo "[*] Draining alerts from ${CONTAINER} between ${SINCE} and ${UNTIL}"
+fi
 
 # alerts.json (rule hits). Each line is one JSON event with a .timestamp
 # field. String compare on ISO-8601 timestamps is sufficient.
-docker exec "${CONTAINER}" cat /var/ossec/logs/alerts/alerts.json 2>/dev/null \
+manager_cat /var/ossec/logs/alerts/alerts.json \
     | jq -c --arg since "$SINCE" --arg until "$UNTIL" "$WIN_FILTER" \
     > "$ALERTS_OUT" || true
 
@@ -68,7 +108,7 @@ ALERT_COUNT=$(wc -l < "$ALERTS_OUT" | tr -d ' ')
 echo "[+] Wrote ${ALERT_COUNT} alerts -> ${ALERTS_OUT}"
 
 if [ "$INCLUDE_ARCHIVES" -eq 1 ]; then
-    docker exec "${CONTAINER}" cat /var/ossec/logs/archives/archives.json 2>/dev/null \
+    manager_cat /var/ossec/logs/archives/archives.json \
         | jq -c --arg since "$SINCE" --arg until "$UNTIL" "$WIN_FILTER" \
         > "$ARCHIVES_OUT" || true
     ARCHIVE_COUNT=$(wc -l < "$ARCHIVES_OUT" | tr -d ' ')

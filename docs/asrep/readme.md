@@ -12,7 +12,9 @@ Standalone Windows Server 2016 domain controller for AS-REP roasting demos in th
 | Flag | `C:\Users\Public\enite-flag.txt` |
 | MITRE | T1558.004 |
 
-Independent of the Hack Academy AD Chain 8 reproduction (`hackerblueprint.local` under `docs/ad-chain8/`).
+Independent of the Hack Academy AD Chain 8 reproduction (`hackerblueprint.local`).
+That lab is **local-only WIP** — see [scripts/validate/README.md](../../scripts/validate/README.md#chain-8-local-only-wip).
+The integrated SecretCon campaign uses `secretcon.local` via the three-box chain.
 
 ## Chain summary
 
@@ -44,15 +46,15 @@ nix develop .#kali -c ./scripts/validate-asrep.sh
 ./scripts/observability/stress-campaign-asrep.sh --iterations 10
 ```
 
-See [walkthrough.md](walkthrough.md) goal checklist and [blue-detection-faq.md](blue-detection-faq.md).
+See [attack-faq-walkthrough.md](attack-faq-walkthrough.md) goal checklist and [defend-faq-walkthrough.md](defend-faq-walkthrough.md).
 
 ## Challenge components
 
 | Component | Document |
 |---|---|
-| Attack walkthrough | [walkthrough.md](walkthrough.md) |
-| Blue detection FAQ | [blue-detection-faq.md](blue-detection-faq.md) |
-| Proxmox deploy | [proxmox-deploy-recon.md](proxmox-deploy-recon.md) |
+| Attack walkthrough | [attack-faq-walkthrough.md](attack-faq-walkthrough.md) |
+| Blue detection FAQ | [defend-faq-walkthrough.md](defend-faq-walkthrough.md) |
+| Proxmox deploy | [reports/proxmox-deploy-recon.md](reports/proxmox-deploy-recon.md) |
 | Infrastructure | this file |
 | Wazuh rules | `infrastructure/wazuh-docker/config/wazuh_cluster/local_rules.xml` IDs `100700`-`100702` |
 | Agent group | `infrastructure/wazuh-docker/config/wazuh_cluster/shared/asrep/agent.conf` |

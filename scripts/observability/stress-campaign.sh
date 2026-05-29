@@ -20,13 +20,22 @@ set -uo pipefail
 #
 # Usage:
 #   ./scripts/observability/stress-campaign.sh \
+#       [--platform local-qemu|proxmox] \
 #       [--iterations N (default 10)] [--run-id ID] \
 #       [--skip-stack] [--skip-rebuild] [--skip-baseline] \
-#       [--skip-phases 04a,06b] [--noise-s 30]
+#       [--skip-phases 04a,06b] [--noise-s 30] \
+#       [--vmid 119] [--ip 192.168.60.119]
 #
 # Env knobs (mirror observability-loop / baseline-tour):
 #   WINRM_PORT, ADMIN_PW, JOE_USER, JOE_PW, WAZUH_API_USER,
 #   WAZUH_API_PASSWORD, WAZUH_MANAGER_GW, AGENT_IP, QCOW, SNAP_NAME
+#
+# Proxmox-specific env (only consumed when --platform proxmox):
+#   PROXMOX_HOST           default 192.168.60.1
+#   PROXMOX_PASSWORD       required (sshpass to root@PROXMOX_HOST)
+#   CYSVULN_PROXMOX_IP     overrides --ip
+#   WAZUH_MANAGER_HOST     default 192.168.61.10 (Proxmox manager)
+#   WAZUH_MANAGER_USER     default dadmin (Proxmox manager ssh login)
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=../lib/loop_lib.sh
@@ -40,9 +49,13 @@ SKIP_REBUILD=1                # default: reuse current image; campaigns should
 SKIP_BASELINE=1               # same logic: reuse existing baseline snapshot.
 SKIP_PHASES=""
 NOISE_S=30                    # short noise window keeps 10x wall clock down
+PLATFORM="local-qemu"
+PVE_VMID="119"
+PVE_VM_IP=""                  # filled from CYSVULN_PROXMOX_IP / --ip below
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --platform) PLATFORM="$2"; shift 2 ;;
         --iterations) ITERATIONS="$2"; shift 2 ;;
         --run-id) RUN_ID="$2"; shift 2 ;;
         --skip-stack) SKIP_STACK=1; shift ;;
@@ -52,10 +65,17 @@ while [ $# -gt 0 ]; do
         --baseline) SKIP_BASELINE=0; shift ;;
         --skip-phases) SKIP_PHASES="$2"; shift 2 ;;
         --noise-s) NOISE_S="$2"; shift 2 ;;
-        -h|--help) sed -n '3,30p' "$0"; exit 0 ;;
+        --vmid) PVE_VMID="$2"; shift 2 ;;
+        --ip) PVE_VM_IP="$2"; shift 2 ;;
+        -h|--help) sed -n '3,40p' "$0"; exit 0 ;;
         *) echo "[!] unknown flag: $1" >&2; exit 2 ;;
     esac
 done
+
+case "$PLATFORM" in
+    local-qemu|proxmox) ;;
+    *) echo "[!] --platform must be local-qemu or proxmox" >&2; exit 2 ;;
+esac
 
 if [ -z "$RUN_ID" ]; then
     RUN_ID="stress-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -69,22 +89,80 @@ exec > >(tee -a "$LOG") 2>&1
 # Env consumed by loop_lib.sh helpers + downstream scripts.
 export QCOW="${QCOW:-${REPO_ROOT}/artifacts/cysvuln/local-qemu/cysvuln.qcow2}"
 SNAP_NAME="${SNAP_NAME:-baseline}"
-export WINRM_PORT="${WINRM_PORT:-15985}"
 export ADMIN_USER="${ADMIN_USER:-Administrator}"
 export ADMIN_PW="${ADMIN_PW:-PizzaMan123!}"
 JOE_USER="${JOE_USER:-User_Joe}"
 JOE_PW="${JOE_PW:-VeryStrongPassword123!@#}"
-AGENT_IP="${AGENT_IP:-10.0.2.15}"
-WAZUH_MANAGER_GW="${WAZUH_MANAGER_GW:-10.0.2.2}"
-export PIDFILE="${CYSVULN_PIDFILE:-/tmp/cysvuln-local.pid}"
 DRAIN_TAIL_S="${DRAIN_TAIL_S:-12}"
+
+# ------------------------------------------------------------- platform bind
+# Per-platform configuration. The iteration loop only touches these
+# variables + the four helper functions defined below (vm_revert / vm_boot /
+# vm_stop / drain_window). All phase scripts are platform-agnostic and
+# consume TARGET + WINRM_PORT.
+case "$PLATFORM" in
+    local-qemu)
+        export TARGET="${TARGET:-127.0.0.1}"
+        export WINRM_PORT="${WINRM_PORT:-15985}"
+        AGENT_IP="${AGENT_IP:-10.0.2.15}"
+        WAZUH_MANAGER_GW="${WAZUH_MANAGER_GW:-10.0.2.2}"
+        export PIDFILE="${CYSVULN_PIDFILE:-/tmp/cysvuln-local.pid}"
+        WAZUH_API_HOST_FOR_GATE="127.0.0.1"
+        DRAIN_MANAGER_SSH=""    # docker stack; drain uses docker exec
+        ;;
+    proxmox)
+        PROXMOX_HOST="${PROXMOX_HOST:-192.168.60.1}"
+        : "${PROXMOX_PASSWORD:?PROXMOX_PASSWORD required for --platform proxmox}"
+        PVE_VM_IP="${PVE_VM_IP:-${CYSVULN_PROXMOX_IP:-192.168.60.57}}"
+        PVE_HTTP_TARGET="${PVE_HTTP_TARGET:-$PVE_VM_IP}"
+        SSHPASS_BIN="${SSHPASS_BIN:-$(command -v sshpass 2>/dev/null || true)}"
+        if [ -z "$SSHPASS_BIN" ] && command -v nix >/dev/null 2>&1; then
+            SSHPASS_BIN="$(nix shell nixpkgs#sshpass --command sh -c 'command -v sshpass' 2>/dev/null || true)"
+        fi
+        [ -n "$SSHPASS_BIN" ] || { echo "[!] sshpass not found for --platform proxmox" >&2; exit 2; }
+        if [ "${CYSVULN_PROXMOX_WINRM_TUNNEL:-0}" = "1" ]; then
+            TUNNEL_PORT="${CYSVULN_PROXMOX_WINRM_TUNNEL_PORT:-15985}"
+            pkill -f "ssh -fN -L 127.0.0.1:${TUNNEL_PORT}:" 2>/dev/null || true
+            sleep 1
+            "$SSHPASS_BIN" -p "$PROXMOX_PASSWORD" ssh -fN \
+                -o StrictHostKeyChecking=accept-new \
+                -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+                -o LogLevel=ERROR -o ExitOnForwardFailure=yes \
+                -L "127.0.0.1:${TUNNEL_PORT}:${PVE_VM_IP}:5985" \
+                "root@${PROXMOX_HOST}"
+            sleep 2
+            export TARGET="127.0.0.1"
+            export WINRM_PORT="$TUNNEL_PORT"
+        else
+            export TARGET="${TARGET:-$PVE_VM_IP}"
+            export WINRM_PORT="${WINRM_PORT:-5985}"
+        fi
+        AGENT_IP="${AGENT_IP:-$PVE_VM_IP}"
+        WAZUH_MANAGER_HOST="${WAZUH_MANAGER_HOST:-192.168.61.10}"
+        WAZUH_MANAGER_USER="${WAZUH_MANAGER_USER:-dadmin}"
+        WAZUH_API_HOST_FOR_GATE="$WAZUH_MANAGER_HOST"
+        DRAIN_MANAGER_SSH="${WAZUH_MANAGER_USER}@${WAZUH_MANAGER_HOST}"
+        SSH_KEY="${SSH_KEY:-${REPO_ROOT}/provisioning/ssh/packer_ed25519}"
+        export MANAGER_SSH_PROXY="${SSHPASS_BIN} -p ${PROXMOX_PASSWORD} ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no -o LogLevel=ERROR -W %h:%p root@${PROXMOX_HOST}"
+        ;;
+esac
 
 echo "================================================="
 echo "Stress campaign"
+echo "  platform   : ${PLATFORM}"
 echo "  run-id     : ${RUN_ID}"
 echo "  iterations : ${ITERATIONS}"
 echo "  out-dir    : ${OUT_BASE}"
-echo "  qcow       : ${QCOW}"
+if [ "$PLATFORM" = "local-qemu" ]; then
+    echo "  qcow       : ${QCOW}"
+fi
+if [ "$PLATFORM" = "proxmox" ]; then
+    echo "  vmid       : ${PVE_VMID}"
+    echo "  vm-ip      : ${PVE_VM_IP}"
+    echo "  manager    : ${WAZUH_MANAGER_HOST} (${WAZUH_MANAGER_USER})"
+    echo "  jump host  : root@${PROXMOX_HOST}"
+fi
+echo "  target     : ${TARGET}:${WINRM_PORT}"
 echo "  snapshot   : ${SNAP_NAME}"
 echo "  noise-s    : ${NOISE_S}"
 echo "  started    : $(date -u +%FT%TZ)"
@@ -94,21 +172,66 @@ if ! python3 -c "import winrm" 2>/dev/null; then
     echo "[!] run inside: nix develop" >&2
     exit 2
 fi
-if ! command -v jq >/dev/null 2>&1 || ! command -v qemu-img >/dev/null 2>&1; then
-    echo "[!] jq + qemu-img required" >&2
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[!] jq required" >&2
     exit 2
 fi
+if [ "$PLATFORM" = "local-qemu" ] && ! command -v qemu-img >/dev/null 2>&1; then
+    echo "[!] qemu-img required for --platform local-qemu" >&2
+    exit 2
+fi
+
+# ----------------------------------------------------------- platform helpers
+
+# Proxmox SSH helper (closes over PROXMOX_HOST + SSHPASS_BIN + PROXMOX_PASSWORD).
+pve_ssh() {
+    "$SSHPASS_BIN" -p "$PROXMOX_PASSWORD" ssh \
+        -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+        -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+        -o LogLevel=ERROR \
+        "root@${PROXMOX_HOST}" "$@"
+}
+
+vm_revert() {
+    if [ "$PLATFORM" = "proxmox" ]; then
+        # qm rollback handles stop + revert; explicit start follows.
+        pve_ssh "qm rollback ${PVE_VMID} ${SNAP_NAME} && qm start ${PVE_VMID}"
+    else
+        loop_revert_snapshot "$QCOW" "$SNAP_NAME"
+    fi
+}
+
+vm_boot() {
+    if [ "$PLATFORM" = "proxmox" ]; then
+        # rollback above already started the VM; this is a no-op for proxmox
+        # to keep the iteration loop's "boot" stage symmetric with local-qemu.
+        true
+    else
+        "${REPO_ROOT}/scripts/run-local-cysvuln.sh" "$QCOW"
+    fi
+}
+
+vm_stop() {
+    if [ "$PLATFORM" = "proxmox" ]; then
+        pve_ssh "qm shutdown ${PVE_VMID} --timeout 60 || qm stop ${PVE_VMID}" || true
+    else
+        loop_stop_vm
+    fi
+}
 
 ###############################################################################
 # One-time prep (idempotent)
 ###############################################################################
 
-if [ "$SKIP_STACK" -eq 0 ]; then
+if [ "$PLATFORM" = "local-qemu" ] && [ "$SKIP_STACK" -eq 0 ]; then
     echo
     echo "[prep] wazuh-docker stack"
     "${REPO_ROOT}/scripts/wazuh-docker-up.sh"
-else
+elif [ "$PLATFORM" = "local-qemu" ]; then
     echo "[prep] skip-stack: assuming wazuh-docker is already up"
+else
+    echo "[prep] platform=proxmox: native Wazuh manager assumed running @ ${WAZUH_MANAGER_HOST}"
+    echo "       (rules sync handled out-of-band by scripts/proxmox/sync-wazuh-rules.sh)"
 fi
 
 echo
@@ -128,25 +251,46 @@ else
 fi
 
 if [ "$SKIP_REBUILD" -eq 0 ]; then
-    echo
-    echo "[prep] packer rebuild (WAZUH_MANAGER=${WAZUH_MANAGER_GW})"
-    loop_stop_vm
-    BUILD_LOG="${OUT_BASE}/build.log" \
-    WAZUH_MANAGER="$WAZUH_MANAGER_GW" \
-    SECRETCON_USER_FLAG="$SECRETCON_USER_FLAG" \
-    SECRETCON_ROOT_FLAG="$SECRETCON_ROOT_FLAG" \
-        "${REPO_ROOT}/scripts/build-cysvuln-local.sh"
+    if [ "$PLATFORM" = "proxmox" ]; then
+        echo
+        echo "[prep] packer rebuild on proxmox (WAZUH_MANAGER=${WAZUH_MANAGER_HOST})"
+        WAZUH_MANAGER_HOST="$WAZUH_MANAGER_HOST" \
+        SECRETCON_USER_FLAG="$SECRETCON_USER_FLAG" \
+        SECRETCON_ROOT_FLAG="$SECRETCON_ROOT_FLAG" \
+            "${REPO_ROOT}/scripts/proxmox/deploy-cysvuln.sh" --vmid "$PVE_VMID" --ip "$PVE_VM_IP" --skip-verify
+    else
+        echo
+        echo "[prep] packer rebuild (WAZUH_MANAGER=${WAZUH_MANAGER_GW})"
+        loop_stop_vm
+        BUILD_LOG="${OUT_BASE}/build.log" \
+        WAZUH_MANAGER="$WAZUH_MANAGER_GW" \
+        SECRETCON_USER_FLAG="$SECRETCON_USER_FLAG" \
+        SECRETCON_ROOT_FLAG="$SECRETCON_ROOT_FLAG" \
+            "${REPO_ROOT}/scripts/build-cysvuln-local.sh"
+    fi
 else
-    echo "[prep] skip-rebuild: assuming ${QCOW} already built with current flags + WAZUH_MANAGER=${WAZUH_MANAGER_GW}"
+    if [ "$PLATFORM" = "proxmox" ]; then
+        echo "[prep] skip-rebuild: assuming VMID ${PVE_VMID} @ ${PVE_VM_IP} already built with current flags"
+    else
+        echo "[prep] skip-rebuild: assuming ${QCOW} already built with current flags + WAZUH_MANAGER=${WAZUH_MANAGER_GW}"
+    fi
 fi
 
 if [ "$SKIP_BASELINE" -eq 0 ]; then
     echo
     echo "[prep] baseline snapshot"
-    loop_stop_vm
-    "${REPO_ROOT}/scripts/observability/baseline-snapshot.sh" --qcow "$QCOW" --name "$SNAP_NAME"
+    if [ "$PLATFORM" = "proxmox" ]; then
+        "${REPO_ROOT}/scripts/proxmox/baseline-snapshot-cysvuln.sh" --vmid "$PVE_VMID" --ip "$PVE_VM_IP" --name "$SNAP_NAME"
+    else
+        loop_stop_vm
+        "${REPO_ROOT}/scripts/observability/baseline-snapshot.sh" --qcow "$QCOW" --name "$SNAP_NAME"
+    fi
 else
-    echo "[prep] skip-baseline: assuming qemu-img snapshot '${SNAP_NAME}' already exists"
+    if [ "$PLATFORM" = "proxmox" ]; then
+        echo "[prep] skip-baseline: assuming qm snapshot '${SNAP_NAME}' already exists on VMID ${PVE_VMID}"
+    else
+        echo "[prep] skip-baseline: assuming qemu-img snapshot '${SNAP_NAME}' already exists"
+    fi
 fi
 
 ###############################################################################
@@ -190,9 +334,12 @@ run_phase() {
     since_ts=$(date -u -d "@$((start_epoch - 5))" +%FT%TZ 2>/dev/null || echo "$start")
     until_ts=$(date -u -d "@$((end_epoch + DRAIN_TAIL_S))" +%FT%TZ 2>/dev/null || date -u +%FT%TZ)
 
-    "${REPO_ROOT}/scripts/wazuh-drain-alerts.sh" \
-        --since "$since_ts" --until "$until_ts" \
-        --out-dir "$dir" --include-archives >/dev/null 2>&1 || true
+    local drain_args=( --since "$since_ts" --until "$until_ts"
+                       --out-dir "$dir" --include-archives )
+    if [ -n "$DRAIN_MANAGER_SSH" ]; then
+        drain_args+=( --manager-ssh "$DRAIN_MANAGER_SSH" )
+    fi
+    "${REPO_ROOT}/scripts/wazuh-drain-alerts.sh" "${drain_args[@]}" >/dev/null 2>&1 || true
 
     local cnt arc
     cnt=$(wc -l < "${dir}/alerts.json" 2>/dev/null | tr -d ' ' || echo 0)
@@ -345,7 +492,11 @@ JSON
 CAMPAIGN_CSV="${OUT_BASE}/campaign-summary.csv"
 echo "iter,start,end,wall_s,user_flag,root_flag,both_flags,foothold_joe,aie_expected,total_alerts,r100507,r100508,r100509,r100510,r100512,r100520,r100530,secretcon_rules" > "$CAMPAIGN_CSV"
 
-trap loop_stop_vm EXIT
+trap 'vm_stop' EXIT
+
+# Phase 04 (EFS HTTP) port to dial. Local-qemu uses the 18080 hostfwd
+# from run-local-cysvuln.sh; proxmox dials the guest's port 80 directly.
+EFS_PORT="${EFS_PORT:-$( [ "$PLATFORM" = "proxmox" ] && echo 80 || echo 18080 )}"
 
 for i in $(seq 1 "$ITERATIONS"); do
     ITER_DIR="${OUT_BASE}/iter-${i}"
@@ -359,37 +510,38 @@ for i in $(seq 1 "$ITERATIONS"); do
     ITER_START_EPOCH=$(date +%s)
     ITER_START=$(date -u +%FT%TZ)
 
-    loop_stop_vm
-    echo "[*] revert qcow to snapshot '${SNAP_NAME}'"
-    if ! loop_revert_snapshot "$QCOW" "$SNAP_NAME"; then
+    vm_stop
+    echo "[*] revert snapshot '${SNAP_NAME}' (${PLATFORM})"
+    if ! vm_revert; then
         echo "[!] snapshot revert failed; aborting" >&2
         break
     fi
 
     echo "[*] booting VM"
-    "${REPO_ROOT}/scripts/run-local-cysvuln.sh" "$QCOW"
+    vm_boot
 
-    echo "[*] gating on WinRM + agent active"
+    echo "[*] gating on WinRM + agent active (${TARGET}:${WINRM_PORT}; manager=${WAZUH_API_HOST_FOR_GATE})"
     WAZUH_AGENT_IP="$AGENT_IP" \
-        "${REPO_ROOT}/scripts/lib/wait_for_winrm.sh" 127.0.0.1 240 || true
+    WAZUH_API_HOST="$WAZUH_API_HOST_FOR_GATE" \
+        "${REPO_ROOT}/scripts/lib/wait_for_winrm.sh" "$TARGET" 360 || true
 
-    # First-iter flag sniff when --skip-rebuild: the QCOW carries flags
+    # First-iter flag sniff when --skip-rebuild: the image carries flags
     # from whatever earlier build baked it, so the scorecard grep needs
     # those exact tokens, not freshly generated ones.
     if [ "$i" = "1" ] && [ -z "$SECRETCON_USER_FLAG" ]; then
         echo "[*] sniffing baked flag tokens from running VM"
         FLAG_SNIFF="${OUT_BASE}/flags.env"
-        python3 - "$WINRM_PORT" "$ADMIN_PW" "$FLAG_SNIFF" "$RUN_ID" <<'PY' || true
+        python3 - "$TARGET" "$WINRM_PORT" "$ADMIN_PW" "$FLAG_SNIFF" "$RUN_ID" <<'PY' || true
 import sys, winrm
-port, pw, out, run_id = sys.argv[1:5]
-s = winrm.Session(f"http://127.0.0.1:{port}/wsman", auth=("Administrator", pw), transport="ntlm")
+host, port, pw, out, run_id = sys.argv[1:6]
+s = winrm.Session(f"http://{host}:{port}/wsman", auth=("Administrator", pw), transport="ntlm")
 def read(p):
     r = s.run_ps(f"Get-Content '{p}' -Raw -EA SilentlyContinue")
     return (r.std_out or b"").decode(errors="replace").strip()
 user = read(r"C:\Users\User_Joe\Desktop\user.txt")
 root = read(r"C:\Users\Administrator\Desktop\root.txt")
 with open(out, "w") as fh:
-    fh.write(f"# Sniffed from baked QCOW at {run_id}\n")
+    fh.write(f"# Sniffed from baked image at {run_id}\n")
     fh.write(f"SECRETCON_USER_FLAG={user}\n")
     fh.write(f"SECRETCON_ROOT_FLAG={root}\n")
     fh.write(f"SECRETCON_RUN_ID={run_id}\n")
@@ -410,41 +562,41 @@ PY
     run_phase "$i" 00 noise sleep "$NOISE_S"
 
     run_phase "$i" 03 smoke env WINRM_PORT="$WINRM_PORT" \
-        "${REPO_ROOT}/scripts/verify-cysvuln.sh" 127.0.0.1
+        "${REPO_ROOT}/scripts/verify-cysvuln.sh" "$TARGET"
 
     # 04a (callback) needs --lhost and a reachable listener. QEMU user-net
-    # cannot route guest->host without portfwd, so the callback path is
-    # effectively unreachable in this lab; only try it when CB_LHOST is
-    # explicitly set. Otherwise mark it skipped and capture the CTF gap.
+    # cannot route guest->host without portfwd; the Proxmox box CAN route
+    # back to a workstation over WireGuard but that's brittle in CI. Only
+    # try it when CB_LHOST is explicitly set.
     if [ -n "${CB_LHOST:-}" ]; then
         run_phase "$i" 04a foothold-callback python3 "${REPO_ROOT}/scripts/validate/check_efs69_response.py" \
-            --target 127.0.0.1 --port 18080 --service-port 80 \
+            --target "${PVE_HTTP_TARGET:-$TARGET}" --port "$EFS_PORT" --service-port 80 \
             --mode callback --lhost "$CB_LHOST" --cmd whoami
     else
-        echo "  >> phase 04a (foothold-callback): SKIPPED (CB_LHOST not set; callback unreachable on QEMU user-net)"
+        echo "  >> phase 04a (foothold-callback): SKIPPED (CB_LHOST not set)"
         mkdir -p "${ITER_DIR}/phase-04a-foothold-callback"
         cat > "${ITER_DIR}/phase-04a-foothold-callback/summary.json" <<JSON
-{"phase_id":"04a","phase_name":"foothold-callback","skipped":true,"reason":"CB_LHOST not set; callback unreachable on QEMU user-net (CTF gap noted)","alert_count":0,"exit_code":-1}
+{"phase_id":"04a","phase_name":"foothold-callback","skipped":true,"reason":"CB_LHOST not set; callback path requires reachable listener (documented CTF gap)","alert_count":0,"exit_code":-1}
 JSON
     fi
 
     # 04b is the deterministic exec path that runs every iter. The CTF
     # callback gap is documented separately and tracked via the 04a skip.
     run_phase "$i" 04b foothold-exec python3 "${REPO_ROOT}/scripts/validate/check_efs69_response.py" \
-        --target 127.0.0.1 --port 18080 --service-port 80 --mode exec --cmd whoami
+        --target "${PVE_HTTP_TARGET:-$TARGET}" --port "$EFS_PORT" --service-port 80 --mode exec --cmd whoami
 
-    run_phase "$i" 05 user-flag "${REPO_ROOT}/scripts/lib/read_flag.sh" user 127.0.0.1
+    run_phase "$i" 05 user-flag "${REPO_ROOT}/scripts/lib/read_flag.sh" user "$TARGET"
 
     run_phase "$i" 06 aie-audit python3 "${REPO_ROOT}/scripts/validate/audit_aie.py" \
-        --target 127.0.0.1 --port "$WINRM_PORT" \
+        --target "$TARGET" --port "$WINRM_PORT" \
         --user "$ADMIN_USER" --password "$ADMIN_PW" --profile-user "$JOE_USER" \
         --out-json
 
-    run_phase "$i" 06a winpeas "${REPO_ROOT}/scripts/run-joe-tool.sh" winpeas 127.0.0.1
+    run_phase "$i" 06a winpeas "${REPO_ROOT}/scripts/run-joe-tool.sh" winpeas "$TARGET"
 
-    run_phase "$i" 06b sharpup "${REPO_ROOT}/scripts/run-joe-tool.sh" sharpup 127.0.0.1
+    run_phase "$i" 06b sharpup "${REPO_ROOT}/scripts/run-joe-tool.sh" sharpup "$TARGET"
 
-    run_phase "$i" 07 privesc "${REPO_ROOT}/scripts/validate-cysvuln-aie-joe.sh" 127.0.0.1
+    run_phase "$i" 07 privesc "${REPO_ROOT}/scripts/validate-cysvuln-aie-joe.sh" "$TARGET"
 
     run_phase "$i" 08 root-flag "${REPO_ROOT}/scripts/lib/read_flag.sh" root 127.0.0.1
 
@@ -486,7 +638,7 @@ PY
     echo "$row" >> "$CAMPAIGN_CSV"
 
     echo "[*] iter ${i} wall=${WALL_S}s; stopping VM"
-    loop_stop_vm
+    vm_stop
 done
 
 trap - EXIT

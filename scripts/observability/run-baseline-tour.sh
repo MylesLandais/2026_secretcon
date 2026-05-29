@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# Walk each step of docs/cysvulnserver/walkthrough.md against an already
+# Walk each step of docs/cysvulnserver/attack-faq-walkthrough.md against an already
 # booted CysVuln VM, draining Wazuh alerts + archives per phase. Goal:
 # produce a per-phase SIEM footprint matrix - what every action looks
 # like to the analyst.
@@ -224,7 +224,7 @@ render_matrix() {
 }
 
 ###############################################################################
-# Phase list (mirrors docs/cysvulnserver/walkthrough.md ToC)
+# Phase list (mirrors docs/cysvulnserver/attack-faq-walkthrough.md ToC)
 ###############################################################################
 
 phase 00 noise sleep "$NOISE_S"
@@ -257,5 +257,5 @@ echo "  run-id   : ${RUN_ID}"
 echo "  out-dir  : ${OUT_BASE}"
 echo "  matrix   : ${OUT_BASE}/matrix.md"
 echo "  csv      : ${OUT_BASE}/summary.csv"
-echo "  next     : fold findings into docs/cysvulnserver/blue-faq-walkthrough.md"
+echo "  next     : fold findings into docs/cysvulnserver/defend-faq-walkthrough.md"
 echo "================================================="

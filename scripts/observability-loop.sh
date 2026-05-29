@@ -15,7 +15,7 @@ set -euo pipefail
 #    with alerts.json, msiexec-timeline.json, summary.json, chain.log,
 #    and an ossec.log tail.
 # 6. Emit summary.csv + raw-notes.md across all iterations, ready for
-#    folding findings into docs/cysvulnserver/blue-faq-walkthrough.md.
+#    folding findings into docs/cysvulnserver/defend-faq-walkthrough.md.
 #
 # Usage:
 #   ./scripts/observability-loop.sh \
@@ -236,5 +236,5 @@ echo "  run-id  : ${RUN_ID}"
 echo "  out-dir : ${OUT_BASE}"
 echo "  summary : ${SUMMARY_CSV}"
 echo "  notes   : ${RAW_NOTES}"
-echo "  next    : fold findings into docs/cysvulnserver/blue-faq-walkthrough.md"
+echo "  next    : fold findings into docs/cysvulnserver/defend-faq-walkthrough.md"
 echo "================================================="

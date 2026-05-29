@@ -1,11 +1,11 @@
 # Defend track scoring rubric (three-box chain)
 
-Blue-team goals for the integrated **CysVuln → EWS → secretcon.local DC** campaign. Evidence is expected in Wazuh (manager `192.168.61.10`, agent groups `cysvuln`, `ews`, `asrep`). PCAP bonuses require live capture on `crit-capture` (VMID 111, deferred) or replay corpora under `artifacts/`.
+Blue-team goals for the integrated **CysVuln → EWS → secretcon.local DC** campaign. Evidence is expected in Wazuh (manager `192.168.61.10`, agent groups `cysvuln`, `ews`, `asrep`). PCAP bonuses use live capture on `crit-capture` (VMID 111) via [`scripts/proxmox/deploy-arkime-capture.sh`](../../scripts/proxmox/deploy-arkime-capture.sh) or replay corpora under `artifacts/`.
 
 Cross-links:
 
-- CysVuln detections: [docs/cysvulnserver/blue-faq-walkthrough.md](../cysvulnserver/blue-faq-walkthrough.md)
-- ASREP detections: [docs/asrep/blue-detection-faq.md](../asrep/blue-detection-faq.md)
+- CysVuln detections: [docs/cysvulnserver/defend-faq-walkthrough.md](../cysvulnserver/defend-faq-walkthrough.md)
+- ASREP detections: [docs/asrep/defend-faq-walkthrough.md](../asrep/defend-faq-walkthrough.md)
 - Operator runbook: [three-box-chain.md](three-box-chain.md)
 
 ## Category 1 — CysVuln foothold (10 pts each artifact)
@@ -65,9 +65,12 @@ jq -r '.rule.id' /tmp/chain-drain/alerts.json | sort -u | grep -E '^100(510|7[0-
 
 ## Arkime / PCAP note
 
-Live vmbr1 capture on VMID 111 is **not deployed** in this pass. PCAP bonus goals should be scored from:
+Live vmbr1 capture on VMID 111 (`crit-capture`) is deployed via
+[`scripts/proxmox/deploy-arkime-capture.sh`](../../scripts/proxmox/deploy-arkime-capture.sh)
+and verified with [`scripts/proxmox/verify-arkime-capture.sh`](../../scripts/proxmox/verify-arkime-capture.sh).
+PCAP bonus goals may be scored from:
 
-- Local replay: [infrastructure/arkime-docker/](../../infrastructure/arkime-docker/)
+- Live SPAN capture synced with [`scripts/proxmox/sync-arkime-pcap.sh`](../../scripts/proxmox/sync-arkime-pcap.sh)
+- Local docker Arkime ([`infrastructure/arkime-docker/`](../../infrastructure/arkime-docker/))
 - Exported corpora under `artifacts/` after adversary emulation runs
-
-Mark PCAP bonuses as **conditional** until `crit-capture` is live.
+- Offline bundle [`targets/ews-vnc-pcap-forensics/`](../../targets/ews-vnc-pcap-forensics/README.md)

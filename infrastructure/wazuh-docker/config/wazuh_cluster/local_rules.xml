@@ -421,12 +421,22 @@
   </rule>
 
   <!-- 100801: TightVNC server log "Authentication failed" line.
-       agent.conf tails C:\Program Files\TightVNC\tvnserver.log as a
-       syslog passthrough; lines arrive with decoder={} so we root-rule
-       on <location> instead of chaining off a Wazuh sid (same gotcha
-       as 100506 EFS and 100517 msiexec verbose log). -->
+       agent.conf does NOT tail tvnserver.log directly — TightVNC opens
+       the file with FILE_SHARE_NONE, which the Wazuh agent's libc
+       fopen("rb") cannot cohabit. Instead we run a PowerShell tailer
+       (provisioning/powershell/assets/wazuh-tvnserver-tail.ps1) via
+       <log_format>command</log_format> with <alias>tvnserver-tail</alias>.
+       The agent wraps each emitted line as `ossec: output: 'tvnserver-tail': <line>`
+       which the manager's "ossec" decoder folds into rule 530
+       (level 0, ossec process monitoring). We chain off 530 with
+       if_sid so the <match> regex can hit the raw line — and we keep
+       the <location> pcre2 alternation so a future direct-tail
+       consumer (file replay, e.g.) also matches. See
+       docs/notes/vnc-tvnserver-log-share-violation-2026-05-26.md for
+       the full diagnosis. -->
   <rule id="100801" level="8">
-    <location type="pcre2">(?i)tvnserver\.log$</location>
+    <if_sid>530</if_sid>
+    <location type="pcre2">(?i)(tvnserver-tail$|tvnserver\.log$)</location>
     <match type="pcre2">(?i)(authentication failed|authentication has been rejected|wrong password)</match>
     <description>SecretCon EWS: TightVNC tvnserver.log authentication failure</description>
     <mitre>
@@ -434,31 +444,30 @@
     </mitre>
   </rule>
 
-  <!-- 100802: reg.exe query against the TightVNC password key. Sysmon
+  <!-- 100802: reg.exe query against the VNC password key. Sysmon
        EID 1 captures the commandLine even though the output (the hash
        value) lives only in stdout. Pairs with 100804/100805/100806
        for the actual byte exfil. -->
   <rule id="100802" level="9">
     <if_group>sysmon_event1</if_group>
     <field name="win.eventdata.image" type="pcre2">(?i)\\reg\.exe$</field>
-    <field name="win.eventdata.commandLine" type="pcre2">(?i)(query|export).*HKLM.*TightVNC\\Server</field>
-    <description>SecretCon EWS: reg.exe query against HKLM\SOFTWARE\TightVNC\Server (credential access)</description>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(query|export).*HKLM.*(TightVNC\\Server|ORL\\WinVNC3)</field>
+    <description>SecretCon EWS: reg.exe query against VNC password registry key (credential access)</description>
     <mitre>
       <id>T1012</id>
       <id>T1552.002</id>
     </mitre>
   </rule>
 
-  <!-- 100803: Sysmon EID 13 registry-value SET on the TightVNC password
-       value. Fires once during the Packer bake (msiexec writes the
-       value with VALUE_OF_PASSWORD) so it is a useful blue baseline
-       hit; should NOT fire again on a stable image unless the password
+  <!-- 100803: Sysmon EID 13 registry-value SET on the VNC password value.
+       Fires once during the image bake/configure path so it is a useful
+       blue baseline hit; should NOT fire again on a stable image unless the password
        is rotated. Low level so it sits in alerts.json without
        crowding higher-severity findings. -->
   <rule id="100803" level="7">
     <if_group>sysmon_event_13</if_group>
-    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\SOFTWARE\\TightVNC\\Server\\Password$</field>
-    <description>SecretCon EWS: HKLM\SOFTWARE\TightVNC\Server\Password value SET (baseline at bake; rotation otherwise)</description>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\SOFTWARE\\(TightVNC\\Server|ORL\\WinVNC3)\\Password$</field>
+    <description>SecretCon EWS: VNC password registry value SET (baseline at bake; rotation otherwise)</description>
     <mitre>
       <id>T1112</id>
     </mitre>
@@ -478,16 +487,15 @@
     </mitre>
   </rule>
 
-  <!-- 100805: Windows Security EID 4663 Object Access on the TightVNC
-       password key. Requires SACL + Audit Registry subcategory both
-       enabled; bootstrap_win.ps1 sets these. Does NOT contain the
+  <!-- 100805: Windows Security EID 4663 Object Access on the VNC password
+       key. Requires SACL + Audit Registry subcategory both enabled. Does NOT contain the
        value bytes; it records who/when of the read. -->
   <rule id="100805" level="10">
     <decoded_as>windows_eventchannel</decoded_as>
     <field name="win.system.providerName" type="pcre2">(?i)Microsoft-Windows-Security-Auditing</field>
     <field name="win.system.eventID" type="pcre2">^4663$</field>
-    <field name="win.eventdata.objectName" type="pcre2">(?i)\\REGISTRY\\MACHINE\\SOFTWARE\\TightVNC\\Server</field>
-    <description>SecretCon EWS: Audit Registry object access on TightVNC\Server (credential read)</description>
+    <field name="win.eventdata.objectName" type="pcre2">(?i)\\REGISTRY\\MACHINE\\SOFTWARE\\(TightVNC\\Server|ORL\\WinVNC3)</field>
+    <description>SecretCon EWS: Audit Registry object access on VNC password key (credential read)</description>
     <mitre>
       <id>T1012</id>
       <id>T1552.002</id>
@@ -499,12 +507,12 @@
        by scripts/observability/vnc-adversary-emulation.sh. THE FULL
        LOG carries the hex bytes, so an analyst recovers the credential
        directly from alerts.json without ever touching the endpoint
-       (then runs `vncpasswd.py -d -H <hex>` for plaintext). Highest
+       (then runs `vnc-cred-tool.py decode --hex <hex>` for plaintext). Highest
        severity in this pack to make sure it surfaces. -->
   <rule id="100806" level="12">
     <location type="pcre2">(?i)\\Users\\Public\\vnc-pwd-dump\.txt$</location>
-    <match type="pcre2">(?i)TightVNC password blob \(hex\):</match>
-    <description>SecretCon EWS: TightVNC password hex blob exfil receipt (recoverable via vncpasswd.py -d -H)</description>
+    <match type="pcre2">(?i)(TightVNC|VNC) password blob \(hex\):</match>
+    <description>SecretCon EWS: VNC password hex blob exfil receipt (recoverable via vnc-cred-tool.py decode)</description>
     <mitre>
       <id>T1005</id>
       <id>T1552.002</id>
@@ -519,7 +527,7 @@
   <rule id="100807" level="14" frequency="2" timeframe="900">
     <if_matched_sid>100800</if_matched_sid>
     <if_sid>100802,100804,100805</if_sid>
-    <description>SecretCon EWS: VNC brute force followed by TightVNC credential access within 15 minutes (chain proof)</description>
+    <description>SecretCon EWS: VNC brute force followed by VNC credential access within 15 minutes (chain proof)</description>
     <mitre>
       <id>T1110</id>
       <id>T1552.002</id>
@@ -554,6 +562,121 @@
     <field name="win.eventdata.targetUserName" type="pcre2">(?i)^enite$</field>
     <description>SecretCon: enite logon (cracked credential reuse)</description>
     <mitre><id>T1078.002</id></mitre>
+  </rule>
+
+</group>
+
+<!-- ============================================================
+     100810-100815: OPNsense NSM bridge (Suricata + pf filterlog).
+
+     Pipeline: vmbr1 -> tc-mirror -> OPNsense MIRROR (vtnet2) ->
+       Suricata (IDS-only) ==> EVE syslog ==> wazuh.manager:1514
+       pf filterlog ========> syslog =======> wazuh.manager:514
+
+     Suricata SIDs 2400001 / 2400002 / 2400003 are defined in
+     provisioning/opnsense/suricata/secretcon.rules and pushed to the
+     OPNsense VM by scripts/proxmox/opnsense-apply-config.sh. They map
+     to Wazuh rules 100810 / 100811 / 100816 here; 100812 correlates
+     probe+failure for high-confidence VNC-brute detection, and 100813
+     correlates failed auths followed by a successful login. 100815 catches
+     the same pattern via pf filterlog as a Suricata-down fallback.
+
+     This is the NEW "NSM track" for the EWS VNC analyst challenge,
+     parallel to the existing endpoint track (100800-100807) and the
+     PCAP track (Arkime SPI view + vnc-cred-tool.py crack). All three
+     tracks land on FELDTECH_VNC; see
+     docs/runbooks/opnsense-vnc-brute-analyst-challenge.md.
+     ============================================================ -->
+<group name="secretcon,nsm,opnsense,suricata,">
+
+  <!-- 100810: VNC RFB connection burst detected by Suricata on
+       OPNsense MIRROR (SID 2400001). Parent 86601 is the generic
+       Suricata EVE alert rule seeded by
+       provisioning/bash/bootstrap-wazuh-ubuntu.sh. We child off it
+       per-SID so the dashboard can pivot by signature. -->
+  <rule id="100810" level="10">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id" type="pcre2">^2400001$</field>
+    <description>OPNsense Suricata: VNC RFB connection burst (SID 2400001) - possible brute force</description>
+    <group>vnc,brute_force,attack,nsm,mitre_T1110_001,</group>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
+  </rule>
+
+  <!-- 100811: VNC RFB SecurityResult=Failed reply burst from the
+       server side (SID 2400002). Higher level because this is a
+       server-confirmed failed-auth signal, not just a probe pattern. -->
+  <rule id="100811" level="12">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id" type="pcre2">^2400002$</field>
+    <description>OPNsense Suricata: VNC RFB SecurityResult=Failed burst (SID 2400002) - server saw failed auths</description>
+    <group>vnc,brute_force,authentication_failed,nsm,mitre_T1110_001,</group>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
+  </rule>
+
+  <!-- 100812: velocity correlator. 100810 (probe burst) + 100811
+       (failed-auth burst) from the same source IP within 5 minutes
+       == near-zero false positive VNC brute force confirmation.
+       The dashboard saved search defaults to 100812 to cut alert
+       fatigue while the parent SIDs still land in alerts.json. -->
+  <rule id="100812" level="13" frequency="2" timeframe="300">
+    <if_matched_sid>100810</if_matched_sid>
+    <if_sid>100811</if_sid>
+    <same_source_ip />
+    <description>OPNsense NSM: VNC brute force confirmed (Suricata probe + failed-auth bursts within 5 min)</description>
+    <group>vnc,brute_force,correlation,nsm,mitre_T1110_001,</group>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
+  </rule>
+
+  <!-- 100816: VNC RFB SecurityResult=OK reply from the server side
+       (SID 2400003). This is intentionally separate from 100813 so
+       dashboards can show the success event and the fail-then-success
+       correlation independently. -->
+  <rule id="100816" level="9">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id" type="pcre2">^2400003$</field>
+    <description>OPNsense Suricata: VNC RFB SecurityResult=OK (SID 2400003) - successful VNC login</description>
+    <group>vnc,authentication_success,nsm,mitre_T1110_001,</group>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
+  </rule>
+
+  <!-- 100813: failed-auth burst followed by a successful VNC login
+       from the same source within 5 minutes. This is the NSM signal
+       that the brute force succeeded, not merely that it happened. -->
+  <rule id="100813" level="14" frequency="2" timeframe="300">
+    <if_matched_sid>100811</if_matched_sid>
+    <if_sid>100816</if_sid>
+    <same_source_ip />
+    <description>OPNsense NSM: VNC brute force succeeded (failed auths followed by SecurityResult=OK within 5 min)</description>
+    <group>vnc,brute_force,authentication_success,correlation,nsm,mitre_T1110_001,</group>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
+  </rule>
+
+  <!-- 100815: pf filterlog fallback path. Wazuh ships a built-in pf
+       decoder (ruleset/rules/0235-pf_rules.xml) that emits the 'pf'
+       group with srcip/dstport/etc. parsed out of the OPNsense
+       filterlog. We match >=20 pf events to dstport 5900 from the
+       same source in 60s. Pf logs include retransmissions so the
+       threshold is higher than Suricata 2400001. Useful when
+       Suricata is down or rules are out of sync. -->
+  <rule id="100815" level="8" frequency="20" timeframe="60">
+    <if_matched_group>pf</if_matched_group>
+    <field name="dstport" type="pcre2">^5900$</field>
+    <same_source_ip />
+    <description>OPNsense pf: high rate of connections to VNC:5900 from same source (>=20/60s)</description>
+    <group>vnc,brute_force,pf,nsm,mitre_T1110_001,</group>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
   </rule>
 
 </group>
@@ -607,6 +730,13 @@
     <field name="win.eventdata.logonType" type="pcre2">^(3|10)$</field>
     <description>SecretCon chain: enite interactive or network logon post-roast</description>
     <mitre><id>T1078.002</id></mitre>
+  </rule>
+
+  <rule id="100716" level="10">
+    <if_sid>100700</if_sid>
+    <field name="win.eventdata.ticketEncryptionType" type="pcre2">^0x17$</field>
+    <description>SecretCon chain: AS-REP roast for enite served as RC4 (etype 0x17 confirmed) - hashcat -m 18200 will apply</description>
+    <mitre><id>T1558.004</id></mitre>
   </rule>
 
 </group>

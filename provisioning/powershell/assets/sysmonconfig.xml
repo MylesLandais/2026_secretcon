@@ -269,6 +269,12 @@
 		<!--DATA: UtcTime, ProcessGuid, ProcessId, Image, User, Protocol, Initiated, SourceIsIpv6, SourceIp, SourceHostname, SourcePort, SourcePortName, DestinationIsIpV6, DestinationIp, DestinationHostname, DestinationPort, DestinationPortName-->
 	<RuleGroup name="" groupRelation="or">
 		<NetworkConnect onmatch="include">
+			<!--SecretCon: capture inbound brute-force / scanner traffic to the TightVNC
+			    listener so Wazuh rule 100800 (10 connects to tcp/5900 in 60s from same
+			    sourceIp) actually has events to aggregate. Without this include, the
+			    SwiftOnSecurity baseline only logs network connects from suspicious
+			    IMAGE paths, so tvnserver.exe (in C:\Program Files\TightVNC) is silent.-->
+			<DestinationPort name="SecretConVNCBruteCandidate">5900</DestinationPort>
 			<!--Suspicious sources for network-connecting binaries-->
 			<Image name="Usermode" condition="begin with">C:\Users</Image> <!--Tools downloaded by users can use other processes for networking, but this is a very valuable indicator.-->
 			<Image name="Caution" condition="begin with">C:\Recycle</Image> <!--Nothing should operate from the RecycleBin locations.-->

@@ -23,14 +23,12 @@ for arg in "$@"; do
     esac
 done
 
-cd "$STACK_DIR"
-
+# shellcheck source=lib/docker-stack.sh
+. "${REPO_ROOT}/scripts/lib/docker-stack.sh"
 if [ "$WIPE" -eq 1 ]; then
-    echo "[*] Stopping stack and removing volumes (--wipe)"
-    docker compose -p "${COMPOSE_PROJECT}" down -v --remove-orphans
+    docker_stack_down "$STACK_DIR" "$COMPOSE_PROJECT" --wipe
 else
-    echo "[*] Stopping stack (volumes preserved)"
-    docker compose -p "${COMPOSE_PROJECT}" down --remove-orphans
+    docker_stack_down "$STACK_DIR" "$COMPOSE_PROJECT"
 fi
 
 echo "[+] Wazuh local-lab stack stopped"

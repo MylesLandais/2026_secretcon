@@ -1,0 +1,94 @@
+# SecretCon reference: Suricata YAML fragment for the OPNsense MIRROR interface.
+#
+# OPNsense generates suricata.yaml from its UI; you cannot drop this
+# file in and expect it to be honored verbatim. Use this as a
+# config-as-code reference for the GUI fields that matter:
+#
+#   Services -> Intrusion Detection -> Administration -> Settings
+#       Enabled                = yes
+#       IPS mode               = NO    (SPAN port can't drop)
+#       Promiscuous mode       = yes
+#       Pattern matcher        = hyperscan
+#       Detect profile         = medium
+#       Log payload as bytes   = yes
+#       Home networks          = 192.168.61.0/24
+#       External networks      = !$HOME_NET
+#
+#   Services -> Intrusion Detection -> Administration -> Interfaces
+#       Add row: Interface=MIRROR, Promiscuous=yes,
+#                Checksum check=OFF (SPAN often has bad checksums),
+#                Stream depth=12 mb
+#
+#   Services -> Intrusion Detection -> Administration -> Schedule
+#       Add /usr/local/etc/suricata/rules/secretcon.rules
+#       Enable ET Open ruleset for baseline coverage.
+#
+#   Services -> Intrusion Detection -> EVE output (System -> Settings ->
+#                                                  Logging / Targets)
+#       Enable EVE syslog target tcp://192.168.61.10:1514 facility=local1
+#       RFC5424. The Wazuh manager EVE listener accepts JSON directly;
+#       wrapping in syslog is fine because Wazuh's decoder strips the
+#       syslog header before parsing the JSON body.
+
+# ------------------------------------------------------------------------
+# Reference YAML fragment (do NOT bind-mount this; OPNsense rewrites
+# /usr/local/etc/suricata/suricata.yaml from its UI). The same shape is
+# what the UI should produce after the steps above.
+# ------------------------------------------------------------------------
+
+af-packet:
+  - interface: vtnet2
+    threads: 2
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+    tpacket-v3: yes
+    checksum-checks: no   # SPAN-mirrored frames frequently have bad checksums
+
+vars:
+  address-groups:
+    HOME_NET: "[192.168.61.0/24]"
+    EXTERNAL_NET: "!$HOME_NET"
+    VNC_NET: "$HOME_NET"
+  port-groups:
+    VNC_PORTS: "[5900,5901]"
+
+# Detection engine. medium == default mix of memory and accuracy.
+detect:
+  profile: medium
+  custom-values:
+    toclient-groups: 3
+    toserver-groups: 25
+  sgh-mpm-context: auto
+  inspection-recursion-limit: 3000
+
+# Output streams. The eve-log target is what the Wazuh manager ingests
+# (rules 86600-86604 are the seeded EVE bridge in
+# infrastructure/wazuh-docker/config/wazuh_cluster/local_rules.xml);
+# rules 100810/100811/100812 child off of 86601 for VNC-brute SIDs.
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: syslog
+      facility: local1
+      identity: opnsense-mirror
+      types:
+        - alert:
+            tagged-packets: yes
+            metadata: yes
+            payload: yes
+            payload-buffer-size: 4kb
+        - http
+        - dns
+        - tls
+        - flow
+        - fileinfo
+
+# Rule files. ET Open rules ship via OPNsense's downloader; our custom
+# rules live alongside.
+rule-files:
+  - "rules/*.rules"
+  - "secretcon.rules"
+
+default-rule-path: /usr/local/etc/suricata/rules

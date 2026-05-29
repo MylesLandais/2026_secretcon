@@ -1,0 +1,80 @@
+# SecretCon local-lab Arkime stack (OpenSearch backend + viewer + on-demand capture).
+#
+# Purpose: serve pre-staged PCAPs as challenge artifacts (e.g. a TightVNC
+# auth handshake the participant must crack offline with vncpasswd.py).
+# Live network capture is not the goal here -- this stack mirrors the
+# Wazuh local-lab pattern in infrastructure/wazuh-docker/ where the
+# dataset is generated once and replayed.
+#
+# Brought up by scripts/arkime-docker-up.sh; PCAPs are imported via
+# scripts/arkime-import-pcap.sh which invokes arkime-capture inside the
+# arkime container against files staged under ./pcaps.
+#
+# Topology (all bound to 127.0.0.1 on the host):
+#   host:9201 -> arkime.opensearch:9200  (raw OpenSearch, plaintext)
+#   host:8005 -> arkime.viewer:8005      (Arkime web UI)
+#
+# Default viewer creds (admin / SecretCon123!) are demo-grade; override
+# via .env (ARKIME_ADMIN_PASSWORD) for non-default deployments.
+
+services:
+  arkime.opensearch:
+    image: opensearchproject/opensearch:2.18.0
+    container_name: arkime.opensearch
+    hostname: arkime.opensearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - cluster.name=arkime-local
+      - node.name=arkime-os
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - arkime-os-data:/usr/share/opensearch/data
+    ports:
+      - "${ARKIME_BIND_HOST:-127.0.0.1}:9201:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  arkime.viewer:
+    image: ghcr.io/arkime/arkime/arkime:v5-latest
+    container_name: arkime.viewer
+    hostname: arkime.viewer
+    restart: unless-stopped
+    depends_on:
+      arkime.opensearch:
+        condition: service_healthy
+    environment:
+      - ARKIME__elasticsearch=http://arkime.opensearch:9200
+      - ARKIME__viewHost=0.0.0.0
+      - ARKIME__viewPort=8005
+      - ARKIME__passwordSecret=${ARKIME_PASSWORD_SECRET:-secretcon-arkime-local}
+      - ARKIME__interface=lo
+      - ARKIME__pcapDir=/opt/arkime/raw
+      - ARKIME_ADMIN_USER=${ARKIME_ADMIN_USER:-admin}
+      - ARKIME_ADMIN_PASSWORD=${ARKIME_ADMIN_PASSWORD:-SecretCon123!}
+      - ARKIME__viewerName=secretcon-local
+    command: ["/opt/arkime/bin/docker.sh", "viewer", "--wait-for-db", "http://arkime.opensearch:9200", "--update-geo", "--init"]
+    volumes:
+      - ./pcaps:/opt/arkime/raw
+      - ./config/config.ini:/opt/arkime/etc/config.ini:ro
+      - arkime-viewer-state:/opt/arkime/logs
+    ports:
+      - "${ARKIME_BIND_HOST:-127.0.0.1}:8005:8005"
+
+volumes:
+  arkime-os-data:
+  arkime-viewer-state:

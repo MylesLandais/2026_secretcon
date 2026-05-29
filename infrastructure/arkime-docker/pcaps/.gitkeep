@@ -1,0 +1,4 @@
+# Staged PCAPs for the local-lab Arkime stack.
+# Files placed here are imported on `scripts/arkime-docker-up.sh` and via
+# `scripts/arkime-import-pcap.sh`. Binary PCAPs are git-ignored
+# (regenerable from scripts/observability/vnc-adversary-emulation.sh).

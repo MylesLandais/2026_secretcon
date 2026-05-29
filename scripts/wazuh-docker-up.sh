@@ -41,7 +41,9 @@ if [ ! -f "${CERT_DIR}/root-ca.pem" ]; then
 fi
 
 echo "[*] Bringing stack up (project: ${COMPOSE_PROJECT})"
-docker compose -p "${COMPOSE_PROJECT}" up -d
+# shellcheck source=lib/docker-stack.sh
+. "${REPO_ROOT}/scripts/lib/docker-stack.sh"
+docker_stack_up "$STACK_DIR" "$COMPOSE_PROJECT"
 
 echo "[*] Waiting for manager API at https://${WAZUH_API_HOST}:${WAZUH_API_PORT} ..."
 if ! token=$(wazuh_api_wait_token 240); then

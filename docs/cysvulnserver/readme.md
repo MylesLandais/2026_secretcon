@@ -12,8 +12,50 @@ Windows Server 2016 privilege-escalation challenge for the SecretCon range.
 
 ## Chain summary
 
-1. **Foothold** — Unauthenticated EDB-42256 against Easy File Sharing Web Server 6.9 on HTTP/80. Service runs as `User_Joe`.
+1. **Foothold** — Unauthenticated HTTP exploit against Easy File Sharing Web Server **6.9** on port 80 (player hint: [EDB-42256](https://www.exploit-db.com/exploits/42256); maintainer automation: [EDB-37951](https://www.exploit-db.com/exploits/37951) USERID path — see [Exploit references](#exploit-references)). Service runs as `User_Joe`.
 2. **Privesc** — `AlwaysInstallElevated` (HKLM + HKCU) plus UAC bypass keys allow silent `msiexec` elevation to SYSTEM.
+
+## Exploit references
+
+| EDB | Role |
+|-----|------|
+| [42256](https://www.exploit-db.com/exploits/42256) | Player-facing link in `Notes.txt` (HTTP POST `/sendemail.ghp`; Exploit-DB title says 7.2) |
+| [37951](https://www.exploit-db.com/exploits/37951) | Automated validators (`check_efs69_response.py`, `request_builder/`) on the **pinned 6.9** installer |
+
+Gadget overlap on the pinned build is documented in `scripts/validate/request_builder/rop.py`. Reference copies: `scripts/validate/reference/`.
+
+## Deployment and configuration management
+
+| Layer | CysVuln status | Entry point |
+|-------|----------------|-------------|
+| **Packer** | Server 2016 ISO + PROVISION CD (`infrastructure/packer/cysvuln/`) | `nix build .#cysvuln-local` or hypervisor builders |
+| **Bootstrap** | Authoritative challenge levers | [`provisioning/powershell/bootstrap_cysvuln.ps1`](../provisioning/powershell/bootstrap_cysvuln.ps1) (Sysmon, Wazuh group `cysvuln`, EFS 6.9, AIE, flags) |
+| **Proxmox deploy** | Preferred on cerberus-nix | [`scripts/proxmox/deploy-cysvuln.sh`](../scripts/proxmox/deploy-cysvuln.sh) — live VM **VMID 118** on vmbr0 (DHCP ~`192.168.60.57`); campaign docs target VMID **119** / `192.168.61.51` on vmbr1 when the three-box chain is wired |
+| **Ansible** | Telemetry-only on Proxmox (`sysmon`, `wazuh_agent`); EFS/AIE roles scaffold | [`ansible/playbooks/cysvuln.yml`](../ansible/playbooks/cysvuln.yml), discover: [`discover-proxmox-inventory-cysvuln.sh`](../scripts/proxmox/discover-proxmox-inventory-cysvuln.sh) |
+| **Proxmox (Ansible)** | `playbooks/proxmox/cysvuln.yml` via `deploy-cysvuln.sh` | [`docs/refactor/ansible-proxmox-migration.md`](../docs/refactor/ansible-proxmox-migration.md) |
+
+Artifacts: `infrastructure/artifacts/cysvuln/` (EFS installer SHA-pinned; run `./scripts/fetch-cysvuln-artifacts.sh`).
+
+### Proxmox validation (VMID 118)
+
+WinRM from the analyst workstation is often filtered; use an SSH tunnel via the Proxmox host (same pattern as deploy):
+
+```bash
+# .env: PROXMOX_PASSWORD, WAZUH_API_PASSWORD; optional SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD
+# Baseline VM Administrator password is `packer` until shared-admin converge is applied.
+qm start 118   # on Proxmox — expect DHCP 192.168.60.57 on vmbr0
+
+ssh -L 127.0.0.1:15985:192.168.60.57:5985 root@192.168.60.1
+AGENT_GROUP=cysvuln ./scripts/proxmox/sync-wazuh-rules.sh
+WINRM_PORT=15985 ./scripts/verify-cysvuln.sh 127.0.0.1 packer
+
+# Stress (1×) with WinRM tunnel:
+CYSVULN_PROXMOX_WINRM_TUNNEL=1 ADMIN_PW=packer \
+  ./scripts/observability/stress-campaign.sh \
+  --platform proxmox --vmid 118 --ip 192.168.60.57 --iterations 1
+```
+
+Legacy reference VM: **VMID 108** (`CysVulnServer`, hand-built) — do not use for campaign QA.
 
 ## Hypervisor support
 
@@ -22,9 +64,9 @@ The build and validation paths are hypervisor-portable; the SIEM capture loops a
 | Feature | QEMU (Nix) | Proxmox | Hyper-V | VMware Workstation/Fusion |
 |---|---|---|---|---|
 | Packer build | yes (`nix build .#cysvuln-local`) | yes (`proxmox-iso.win2016-cysvuln`) | yes (`hyperv-iso.cysvuln-hyperv`) | yes (`vmware-iso.cysvuln-vmware`) |
-| Boot / validate chain | yes (host forwards `127.0.0.1:15985`) | yes (lab `192.168.61.51`) | yes (DHCP via `Default Switch`) | yes (DHCP via `vmnet8`) |
-| Local Wazuh docker SIEM | yes (gw `10.0.2.2`) | yes (lab `vmbr1` `192.168.61.10`) | manual override (`172.x.x.1` or `host.docker.internal`) | manual override (`192.168.<vmnet8>.2`) |
-| `observability-loop.sh` / `stress-campaign.sh` | **yes** | no | no | no |
+| Boot / validate chain | yes (host forwards `127.0.0.1:15985`) | yes (VMID **118** / vmbr0 DHCP; campaign `192.168.61.51` when on vmbr1) | yes (DHCP via `Default Switch`) | yes (DHCP via `vmnet8`) |
+| Local Wazuh docker SIEM | yes (gw `10.0.2.2`) | yes (native manager `192.168.61.10`) | manual override (`172.x.x.1` or `host.docker.internal`) | manual override (`192.168.<vmnet8>.2`) |
+| `observability-loop.sh` / `stress-campaign.sh` | **yes** | **yes** (`--platform proxmox`; WinRM tunnel — see above) | no | no |
 | In-tree PowerShell build wrappers (`scripts/hyperv/`) | n/a | n/a | EWS only | none |
 
 Build and run commands per hypervisor live in [deploy-cysvuln-multi-hypervisor.md](../runbooks/deploy-cysvuln-multi-hypervisor.md). Skills: [`hyperv/SKILL.md`](../../.claude/skills/hyperv/SKILL.md), [`vmware/SKILL.md`](../../.claude/skills/vmware/SKILL.md), [`proxmox/SKILL.md`](../../.claude/skills/proxmox/SKILL.md).
@@ -37,8 +79,9 @@ Every SecretCon box ships four pieces. CysVuln's are:
 
 | Component | Document |
 |---|---|
-| Attack walkthrough (red FAQ) | [walkthrough.md](walkthrough.md) |
-| Defender walkthrough (blue FAQ) | [blue-faq-walkthrough.md](blue-faq-walkthrough.md) |
+| Attack walkthrough (red FAQ) | [attack-faq-walkthrough.md](attack-faq-walkthrough.md) |
+| Defender walkthrough (blue FAQ) | [defend-faq-walkthrough.md](defend-faq-walkthrough.md) |
+| Defender Proxmox rerun | [reports/stress-campaign-proxmox-report.md](reports/stress-campaign-proxmox-report.md) |
 | Tool knowledge | [winpeas.md](winpeas.md), [sharpup.md](sharpup.md), [msfvenom.md](msfvenom.md) |
 | Infrastructure deployment | this file + [`infrastructure/wazuh-docker/readme.md`](../../infrastructure/wazuh-docker/readme.md) |
 | AI agent skill (bonus) | [`.claude/skills/wazuh/SKILL.md`](../../.claude/skills/wazuh/SKILL.md) |
@@ -266,7 +309,7 @@ per-iteration `alerts.json`, raw `archives.json`, a curated
 `msiexec-timeline.json` (the single artifact a downstream analyst LLM
 should read first), `summary.json`, and a chain stdout log. A top-level
 `summary.csv` and `raw-notes.md` seed the canonical defender FAQ at
-[blue-faq-walkthrough.md](blue-faq-walkthrough.md).
+[defend-faq-walkthrough.md](defend-faq-walkthrough.md).
 
 Stack lives under [infrastructure/wazuh-docker/](../../infrastructure/wazuh-docker/);
 bring up / tear down with `./scripts/wazuh-docker-up.sh` /
@@ -301,7 +344,7 @@ looks like in isolation:
 
 Artifacts under `artifacts/cysvuln/observability-baseline/<run-id>/`.
 Per-tool footprint analysis is folded into
-[blue-faq-walkthrough.md](blue-faq-walkthrough.md).
+[defend-faq-walkthrough.md](defend-faq-walkthrough.md).
 
 ### 10x stress campaign (red + blue scorecards)
 
@@ -320,7 +363,7 @@ both CTF and SOC teams read the same dataset:
 Artifacts under `artifacts/cysvuln/stress-campaign/<run-id>/`. The latest
 campaign hit 10/10 on both flags and 10/10 on the four AIE-leg rules;
 the dual scorecards and reproducibility analysis live in
-[blue-faq-walkthrough.md](blue-faq-walkthrough.md).
+[defend-faq-walkthrough.md](defend-faq-walkthrough.md).
 
 ## Artifacts
 
@@ -329,5 +372,5 @@ the dual scorecards and reproducibility analysis live in
 - Validation: `scripts/validate/`, `scripts/verify-cysvuln.sh`
 - SIEM stack: `infrastructure/wazuh-docker/`
 - Observability loop: `scripts/observability-loop.sh`, `scripts/observability/`
-- Baseline tour: `scripts/observability/run-baseline-tour.sh`, [blue-faq-walkthrough.md](blue-faq-walkthrough.md)
-- Stress campaign: `scripts/observability/stress-campaign.sh`, [blue-faq-walkthrough.md](blue-faq-walkthrough.md)
+- Baseline tour: `scripts/observability/run-baseline-tour.sh`, [defend-faq-walkthrough.md](defend-faq-walkthrough.md)
+- Stress campaign: `scripts/observability/stress-campaign.sh`, [defend-faq-walkthrough.md](defend-faq-walkthrough.md)

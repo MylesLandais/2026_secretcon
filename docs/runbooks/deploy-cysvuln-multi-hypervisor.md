@@ -151,7 +151,7 @@ Hyper-V and VMware operators get full coverage of the build and validation paths
 ./scripts/validate-cysvuln-chain.sh <guest-ip>
 ```
 
-The exported `dataset.tar.zst` from a QEMU loop is hypervisor-agnostic; replay onto any Wazuh manager via [`scripts/wazuh-replay-to-proxmox.sh`](../../scripts/wazuh-replay-to-proxmox.sh) to exercise the rule pack against a Hyper-V or VMware-hosted manager. See [`docs/cysvulnserver/blue-faq-walkthrough.md`](../cysvulnserver/blue-faq-walkthrough.md) for the analyst story and [`docs/runbooks/wazuh-dataset-export-and-replay.md`](wazuh-dataset-export-and-replay.md) for the replay procedure.
+The exported `dataset.tar.zst` from a QEMU loop is hypervisor-agnostic; replay onto any Wazuh manager via [`scripts/wazuh-replay-to-proxmox.sh`](../../scripts/wazuh-replay-to-proxmox.sh) to exercise the rule pack against a Hyper-V or VMware-hosted manager. See [`docs/cysvulnserver/defend-faq-walkthrough.md`](../cysvulnserver/defend-faq-walkthrough.md) for the analyst story and [`docs/runbooks/wazuh-dataset-export-and-replay.md`](wazuh-dataset-export-and-replay.md) for the replay procedure.
 
 A future hypervisor adapter for `scripts/lib/loop_lib.sh` (`vm_take_snapshot`, `vm_revert_snapshot`, `vm_stop` with QEMU / Hyper-V / VMware backends) would close this gap; it is tracked as future work and not in scope for the current docs.
 
@@ -165,7 +165,7 @@ After any build, boot the artifact and run from your attacker box:
 
 For local QEMU user-networking: `WINRM_PORT=15985 ./scripts/verify-cysvuln.sh 127.0.0.1`
 
-The script checks WinRM, AIE/UAC registry levers, User_Joe presence, and both flag files. It does not execute the EFS or MSI exploit chains — see [docs/cysvulnserver/walkthrough.md](../cysvulnserver/walkthrough.md).
+The script checks WinRM, AIE/UAC registry levers, User_Joe presence, and both flag files. It does not execute the EFS or MSI exploit chains — see [docs/cysvulnserver/attack-faq-walkthrough.md](../cysvulnserver/walkthrough.md).
 
 ## Maintenance
 

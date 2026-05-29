@@ -3,7 +3,7 @@
 [winPEAS](https://github.com/peass-ng/PEASS-ng/tree/master/winPEAS) run from
 the player perspective (`User_Joe`) against the local QEMU CysVuln build.
 The headline finding (`AlwaysInstallElevated` HKLM=1 + HKCU=1) lines up with
-the AIE chain documented in [walkthrough.md](walkthrough.md).
+the AIE chain documented in [attack-faq-walkthrough.md](attack-faq-walkthrough.md).
 
 | Field | Value |
 |---|---|
@@ -54,7 +54,7 @@ Env knobs documented at the top of
 ## Headline findings
 
 The four observations that the AIE chain in
-[walkthrough.md](walkthrough.md) hangs on are all visible from `User_Joe`'s
+[attack-faq-walkthrough.md](attack-faq-walkthrough.md) hangs on are all visible from `User_Joe`'s
 token, and winPEAS surfaces them in the first ~290 lines of output.
 
 ### UAC — bypass posture is wide open
@@ -166,7 +166,7 @@ above). In a player-natural EFS callback shell that group is absent.
 
 ## Cross-references
 
-- [docs/cysvulnserver/walkthrough.md](walkthrough.md) — full chain
+- [docs/cysvulnserver/attack-faq-walkthrough.md](walkthrough.md) — full chain
   (EFS → AIE → SYSTEM)
 - [scripts/validate/audit_aie.py](../../scripts/validate/audit_aie.py) —
   programmatic equivalent of the AIE indicators above

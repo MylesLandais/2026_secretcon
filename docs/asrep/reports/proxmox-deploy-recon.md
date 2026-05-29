@@ -56,4 +56,4 @@ Same as CysVuln Proxmox deploy:
 - Do not collide VMID 112 with existing range VMs (`qm list`).
 - ASREP is independent of Chain 8 (`hackerblueprint.local`) and CysVuln (VMID 108/119).
 
-See [readme.md](readme.md) and [walkthrough.md](walkthrough.md) for local QEMU QC parity.
+See [readme.md](readme.md) and [attack-faq-walkthrough.md](attack-faq-walkthrough.md) for local QEMU QC parity.

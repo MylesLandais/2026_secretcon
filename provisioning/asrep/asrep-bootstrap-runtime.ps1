@@ -113,6 +113,17 @@ try {
     auditpol /set /subcategory:"Kerberos Authentication Service" /success:enable /failure:enable | Out-Null
     auditpol /set /subcategory:"Kerberos Service Ticket Operations" /success:enable /failure:enable | Out-Null
 
+    # Server 2016 default already permits RC4; declare explicitly so the
+    # ASREP roast hash comes back as etype 23 (krb5asrep$23$, hashcat -m 18200)
+    # instead of an AES variant. Mirrors `ksetup /setenctypeattr <domain> ...`.
+    try {
+        ksetup /setenctypeattr $domain RC4-HMAC-MD5 AES128-CTS-HMAC-SHA1-96 AES256-CTS-HMAC-SHA1-96 | Out-Null
+    } catch {
+        Write-Host "[!] ksetup setenctypeattr failed (non-fatal): $($_.Exception.Message)"
+    }
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters' `
+        -Name 'SupportedEncryptionTypes' -Value 0x7FFFFFFF -Type DWord -Force -ErrorAction SilentlyContinue
+
     if (-not (Get-NetFirewallRule -DisplayName 'SecretCon Kerberos TCP' -ErrorAction SilentlyContinue)) {
         New-NetFirewallRule -DisplayName 'SecretCon Kerberos TCP' -Direction Inbound -Protocol TCP -LocalPort 88 -Action Allow | Out-Null
         New-NetFirewallRule -DisplayName 'SecretCon Kerberos UDP' -Direction Inbound -Protocol UDP -LocalPort 88 -Action Allow | Out-Null
@@ -136,6 +147,9 @@ try {
         Set-ADUser -Identity $asrepUser -Enabled $true -KerberosEncryptionType RC4
     }
     Set-ADAccountControl -Identity $asrepUser -DoesNotRequirePreAuth $true
+    # Re-assert RC4-only encryption after any password reset (Set-ADAccountPassword
+    # can flip the supported types depending on the reset path).
+    Set-ADUser -Identity $asrepUser -KerberosEncryptionType RC4 -ErrorAction SilentlyContinue
 
     if ($eniteDa) {
         Add-ADGroupMember -Identity 'Domain Admins' -Members $asrepUser -ErrorAction SilentlyContinue

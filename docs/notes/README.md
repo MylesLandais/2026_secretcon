@@ -1,7 +1,6 @@
 # Notes
 
-Dated working notes preserved for history. These are point-in-time records
-of investigations, build attempts, and discoveries — not living documentation.
+Dated working notes preserved for history. Point-in-time investigations live under `archive/` once folded into living docs.
 
 Living docs live one level up:
 

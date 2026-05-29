@@ -9,7 +9,7 @@ set -euo pipefail
 #     creations, msiexec children, etc.),
 #   * replayed into another Wazuh manager via
 #     scripts/wazuh-replay-to-proxmox.sh, or
-#   * archived alongside docs/cysvulnserver/blue-faq-walkthrough.md as the
+#   * archived alongside docs/cysvulnserver/defend-faq-walkthrough.md as the
 #     evidence pack for a given run.
 #
 # What we copy out of the live wazuh.manager container:
@@ -37,6 +37,8 @@ set -euo pipefail
 # Flags:
 #   --run-id ID            (required) maps to artifacts/cysvuln/observability-loop/<ID>/
 #   --out-dir DIR          override output dir (default: <run-id>/dataset/)
+#   --source-dir DIR       override source run dir (default: observability-loop/<run-id>;
+#                          stress-campaign callers set this to stress-campaign/<run-id>)
 #   --container NAME       manager container (default: wazuh.manager)
 #   --indexer-container N  indexer container (default: wazuh.indexer)
 #   --indexer-user U       indexer basic-auth user (default: $WAZUH_INDEXER_USER)
@@ -48,6 +50,15 @@ set -euo pipefail
 #                          iter-*/summary.json time windows. Default: full file.
 #   --tarball              additionally write <out-dir>.tar.zst (requires zstd)
 #   --no-archives          skip archives/* even if present
+#   --manager-ssh URL      read manager logs/config via `ssh URL sudo cat`
+#                          (Format: user@host[:port]; ProxyCommand from
+#                          $MANAGER_SSH_PROXY). When set, skips the
+#                          docker-exec source entirely. Used for the Proxmox
+#                          native manager that lives behind the Proxmox host.
+#   --manager-ssh-key K    identity file for --manager-ssh (default:
+#                          provisioning/ssh/packer_ed25519)
+#   --api-host H           manager API host (default $WAZUH_API_HOST; set to
+#                          192.168.61.10 when targeting the Proxmox manager)
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/wazuh-common.sh
@@ -69,6 +80,9 @@ WINDOW_FROM_LOOP=0
 TARBALL=0
 NO_ARCHIVES=0
 AGENT_GROUP="${WAZUH_AGENT_GROUP:-ews}"
+MANAGER_SSH=""
+MANAGER_SSH_KEY="${REPO_ROOT}/provisioning/ssh/packer_ed25519"
+API_HOST_OVERRIDE=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -84,7 +98,10 @@ while [ $# -gt 0 ]; do
         --window-from-loop) WINDOW_FROM_LOOP=1; shift ;;
         --tarball) TARBALL=1; shift ;;
         --no-archives) NO_ARCHIVES=1; shift ;;
-        -h|--help) sed -n '3,55p' "$0"; exit 0 ;;
+        --manager-ssh) MANAGER_SSH="$2"; shift 2 ;;
+        --manager-ssh-key) MANAGER_SSH_KEY="$2"; shift 2 ;;
+        --api-host) API_HOST_OVERRIDE="$2"; shift 2 ;;
+        -h|--help) sed -n '3,66p' "$0"; exit 0 ;;
         *) echo "[!] unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -96,9 +113,30 @@ fi
 
 wazuh_require_cmd jq || exit 2
 
-if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
-    echo "[!] container ${CONTAINER} is not running" >&2
-    exit 1
+# Pick the source mode: docker exec on the local lab, ssh sudo on the
+# native (Proxmox) manager. They share the rest of the script (jq filters,
+# manifest, etc.).
+USE_SSH=0
+if [ -n "$MANAGER_SSH" ]; then
+    USE_SSH=1
+    SSH_USER_HOST="${MANAGER_SSH%%:*}"
+    SSH_PORT="22"
+    case "$MANAGER_SSH" in *:*) SSH_PORT="${MANAGER_SSH##*:}";; esac
+    SSH_OPTS=(
+        -o ConnectTimeout=15
+        -o StrictHostKeyChecking=accept-new
+        -o IdentitiesOnly=yes
+        -i "$MANAGER_SSH_KEY"
+        -p "$SSH_PORT"
+    )
+    if [ -n "${MANAGER_SSH_PROXY:-}" ]; then
+        SSH_OPTS+=(-o "ProxyCommand=${MANAGER_SSH_PROXY}")
+    fi
+else
+    if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+        echo "[!] container ${CONTAINER} is not running (and --manager-ssh not given)" >&2
+        exit 1
+    fi
 fi
 
 if [ -n "$SOURCE_DIR" ]; then
@@ -127,6 +165,18 @@ echo "    out dir           : ${OUT_DIR}"
 
 copy_file() {
     local src="$1" dst="$2"
+    if [ "$USE_SSH" -eq 1 ]; then
+        # ssh sudo cat: existence + copy in one round-trip. test -f isn't
+        # 100% reliable over a ProxyJump under sudo (perms vary), so we
+        # cat and check that we got bytes.
+        local tmp; tmp=$(mktemp)
+        if ssh "${SSH_OPTS[@]}" "$SSH_USER_HOST" "sudo cat ${src}" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+            mv "$tmp" "$dst"
+            return 0
+        fi
+        rm -f "$tmp"
+        return 1
+    fi
     if docker exec "$CONTAINER" test -f "$src" 2>/dev/null; then
         docker cp "${CONTAINER}:${src}" "$dst"
         return 0
@@ -201,17 +251,24 @@ copy_file "/var/ossec/etc/shared/${AGENT_GROUP}/agent.conf" \
     "${OUT_DIR}/agent/agent.conf" \
     || echo "[i] shared/${AGENT_GROUP}/agent.conf not present"
 
-# manager API: token + agents list (via wazuh-api.sh)
-if TOKEN=$(WAZUH_API_USER="$API_USER" WAZUH_API_PASSWORD="$API_PASS" \
+# manager API: token + agents list (via wazuh-api.sh).
+# When --api-host is set (Proxmox), point wazuh-api.sh at the remote
+# manager. The API listens on 192.168.61.10:55000 over the WireGuard
+# tunnel from this workstation.
+API_HOST_FINAL="${API_HOST_OVERRIDE:-$WAZUH_API_HOST}"
+if TOKEN=$(WAZUH_API_HOST="$API_HOST_FINAL" \
+           WAZUH_API_USER="$API_USER" WAZUH_API_PASSWORD="$API_PASS" \
               wazuh_api_token 2>/dev/null); then
+    WAZUH_API_HOST="$API_HOST_FINAL" \
     WAZUH_API_USER="$API_USER" WAZUH_API_PASSWORD="$API_PASS" \
         wazuh_api_get "/agents" "$TOKEN" \
         | jq '.' > "${OUT_DIR}/agent/agents.json" 2>/dev/null || true
+    WAZUH_API_HOST="$API_HOST_FINAL" \
     WAZUH_API_USER="$API_USER" WAZUH_API_PASSWORD="$API_PASS" \
         wazuh_api_get "/agents/groups" "$TOKEN" \
         | jq '.' > "${OUT_DIR}/agent/groups.json" 2>/dev/null || true
 else
-    echo "[i] manager API not reachable; skipping agents.json"
+    echo "[i] manager API not reachable at ${API_HOST_FINAL}; skipping agents.json"
 fi
 
 ###############################################################################
@@ -219,7 +276,16 @@ fi
 #    alerts.json/archives.json, so we only capture the cluster snapshot.
 ###############################################################################
 
-if docker ps --format '{{.Names}}' | grep -qx "$INDEXER_CONTAINER"; then
+if [ "$USE_SSH" -eq 1 ]; then
+    # Proxmox / native install: indexer + manager share the wazuh-siem VM.
+    # Hit the indexer over its local socket via ssh.
+    ssh "${SSH_OPTS[@]}" "$SSH_USER_HOST" \
+        "curl -sk -u '${INDEXER_USER}:${INDEXER_PASS}' 'https://127.0.0.1:9200/_cat/indices?v'" \
+        > "${OUT_DIR}/indexer/indices.txt" 2>/dev/null || true
+    ssh "${SSH_OPTS[@]}" "$SSH_USER_HOST" \
+        "curl -sk -u '${INDEXER_USER}:${INDEXER_PASS}' 'https://127.0.0.1:9200/_cluster/health?pretty'" \
+        > "${OUT_DIR}/indexer/health.json" 2>/dev/null || true
+elif docker ps --format '{{.Names}}' | grep -qx "$INDEXER_CONTAINER"; then
     docker exec "$INDEXER_CONTAINER" curl -sk \
         -u "${INDEXER_USER}:${INDEXER_PASS}" \
         'https://wazuh.indexer:9200/_cat/indices?v' \

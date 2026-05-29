@@ -36,6 +36,12 @@ reuse values like `PizzaMan123!` from challenge autounattend files.
 If you find a real secret in history, contact maintainers privately rather
 than opening a public issue with the value.
 
+For manual report-only scanning, see
+[`docs/runbooks/secrets-scan-poc.md`](docs/runbooks/secrets-scan-poc.md).
+Expected CTF strings such as `FELDTECH_VNC` and challenge flags should be
+documented as intentional findings; live infrastructure credentials should
+be rotated and removed.
+
 ## Development workflow
 
 1. Fork the repo or create a feature branch off `main`.

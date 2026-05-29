@@ -1,0 +1,44 @@
+#cloud-config
+# SecretCon range attacker (Ubuntu cloud-init) — hydra + wordlist on vmbr1.
+hostname: secretcon-range-attacker
+manage_etc_hosts: true
+
+users:
+  - name: dadmin
+    groups: [sudo, adm]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: false
+    plain_text_passwd: "PizzaMan123!"
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKytw7x6GEnldRMaX2eIvuX4Qszvz9f0ioBROVTUwNFe packer@secretcon-build-20260514
+
+ssh_pwauth: true
+disable_root: true
+
+package_update: true
+package_upgrade: false
+packages:
+  - qemu-guest-agent
+  - hydra
+  - nmap
+  - python3
+  - curl
+  - ca-certificates
+
+write_files:
+  - path: /etc/motd
+    permissions: "0644"
+    content: |
+      ============================================================
+       SecretCon range attacker (cloud-init)
+       vmbr0: DHCP mgmt SSH  |  vmbr1: 192.168.61.50 campaign
+       hydra EWS: hydra -t1 -V -f -P /opt/secretcon/vnc-better.txt -s 5900 <ews-ip> vnc
+      ============================================================
+
+runcmd:
+  - [mkdir, -p, /opt/secretcon]
+  - [systemctl, enable, --now, qemu-guest-agent]
+  - [systemctl, enable, --now, ssh]
+  - [ufw, allow, "22/tcp"]
+  - [ufw, "--force", enable]

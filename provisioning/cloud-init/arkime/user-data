@@ -1,0 +1,66 @@
+#cloud-config
+hostname: crit-capture
+manage_etc_hosts: true
+preserve_hostname: false
+
+users:
+  - name: dadmin
+    groups: [sudo, adm, docker]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKytw7x6GEnldRMaX2eIvuX4Qszvz9f0ioBROVTUwNFe packer@secretcon-build-20260514
+
+ssh_pwauth: false
+disable_root: true
+
+package_update: true
+package_upgrade: false
+packages:
+  - qemu-guest-agent
+  - curl
+  - ca-certificates
+  - gnupg
+  - python3
+  - apt-transport-https
+  - lsb-release
+
+growpart:
+  mode: auto
+  devices: ['/']
+  ignore_growroot_disabled: false
+
+write_files:
+  - path: /etc/motd
+    permissions: '0644'
+    content: |
+      ============================================================
+       SecretCon 2026 - Arkime capture VM (VMID 111)
+      ============================================================
+       Viewer       : http://192.168.61.11:8005
+       OpenSearch   : http://192.168.61.11:9201
+       PCAP corpus  : /opt/arkime-docker/pcaps/
+       Compose      : /opt/arkime-docker/docker-compose.yml
+       Live log     : docker logs -f arkime.viewer
+       SSH          : ssh -J root@192.168.60.1 dadmin@192.168.61.11
+      ============================================================
+       File-PCAP ingest only this pass; port-mirror / live capture
+       on vmbr1 stays deferred (docs/architecture.md).
+      ============================================================
+
+runcmd:
+  - [systemctl, enable, --now, qemu-guest-agent]
+  - [systemctl, enable, --now, ssh]
+  # Docker CE install (docker.io is too old for compose v2).
+  - sh -c 'install -m 0755 -d /etc/apt/keyrings'
+  - sh -c 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg'
+  - sh -c 'chmod a+r /etc/apt/keyrings/docker.gpg'
+  - sh -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list'
+  - [apt-get, update]
+  - [apt-get, install, -y, docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+  - [systemctl, enable, --now, docker]
+  # The orchestrator scp's /opt/arkime-docker/ in and then exec's
+  # /opt/arkime-docker/bootstrap.sh inside this VM once cloud-init is
+  # done. We do NOT run docker-compose up here because the compose
+  # file is not present yet at first-boot.

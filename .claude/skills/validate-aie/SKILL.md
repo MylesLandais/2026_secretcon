@@ -48,7 +48,7 @@ All pinned in `nix develop`: `python3Packages.pywinrm`, `keystone-engine`, `pyte
 - [scripts/validate/run_aie_via_efs_callback.py](scripts/validate/run_aie_via_efs_callback.py)
 - [scripts/validate/audit_aie.py](scripts/validate/audit_aie.py)
 - [scripts/validate/reference/](scripts/validate/reference/) — upstream EDB PoCs for diffing
-- [docs/cysvulnserver/walkthrough.md](docs/cysvulnserver/walkthrough.md)
+- [docs/cysvulnserver/attack-faq-walkthrough.md](docs/cysvulnserver/attack-faq-walkthrough.md)
 
 ## Common pitfalls
 

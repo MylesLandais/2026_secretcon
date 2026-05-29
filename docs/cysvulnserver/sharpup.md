@@ -175,7 +175,7 @@ Registry AutoLogon Found
 
 - [docs/cysvulnserver/winpeas.md](winpeas.md) — comparable wide-net
   enumeration with the same execution model
-- [docs/cysvulnserver/walkthrough.md](walkthrough.md) — full player chain
+- [docs/cysvulnserver/attack-faq-walkthrough.md](walkthrough.md) — full player chain
   (EFS → AIE → SYSTEM); SharpUp slots in at Phase 6b
 - [scripts/validate/audit_aie.py](../../scripts/validate/audit_aie.py) —
   programmatic equivalent of the AIE finding above

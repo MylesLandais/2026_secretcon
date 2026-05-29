@@ -35,20 +35,15 @@ if [ -z "$RUN_ID" ]; then
     RUN_ID="asrep-stress-$(date -u +%Y%m%dT%H%M%SZ)"
 fi
 OUT_BASE="${REPO_ROOT}/artifacts/asrep/stress-campaign/${RUN_ID}"
-mkdir -p "$OUT_BASE"
-
-LOG="${OUT_BASE}/campaign.log"
-exec > >(tee -a "$LOG") 2>&1
+# shellcheck source=../lib/stress-campaign.sh
+. "${REPO_ROOT}/scripts/lib/stress-campaign.sh"
+campaign_init "$OUT_BASE" "$RUN_ID" "ASREP stress campaign x${ITERATIONS}"
+echo "  out-dir: ${OUT_BASE}"
 
 export PIDFILE="${ASREP_PIDFILE:-/tmp/asrep-local.pid}"
 export WINRM_PORT="${ASREP_WINRM_PORT:-15986}"
 export ADMIN_PW="${ADMIN_PW:-${AD_SAFEMODE_PASSWORD:-PizzaMan123!}}"
 export QCOW
-
-echo "================================================="
-echo "ASREP stress campaign x${ITERATIONS}"
-echo "  out-dir: ${OUT_BASE}"
-echo "================================================="
 
 if [ "$SKIP_STACK" -eq 0 ]; then
     "${REPO_ROOT}/scripts/wazuh-docker-up.sh"

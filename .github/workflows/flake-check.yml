@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  flake-check:
-    name: nix flake check
+  local-gate:
+    name: local validation gate
     runs-on: ubuntu-latest
     steps:
       - name: Check out
@@ -21,5 +21,5 @@ jobs:
             experimental-features = nix-command flakes
             accept-flake-config = true
 
-      - name: nix flake check (no-build)
-        run: nix flake check --no-build --show-trace
+      - name: Run CI-safe local checks
+        run: nix develop -c ./scripts/test-local.sh

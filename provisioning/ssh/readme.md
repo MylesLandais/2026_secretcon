@@ -9,8 +9,10 @@ ssh-keygen -t ed25519 -N '' -C 'packer@secretcon-build' \
 
 Both `packer_ed25519` and `packer_ed25519.pub` are required:
 
-- `packer_ed25519` — referenced by `infrastructure/packer/local-qemu.pkr.hcl` (`ssh_private_key_file`)
-- `packer_ed25519.pub` — bundled onto the provisioning CD (`cd_files`); installed to `C:\ProgramData\ssh\administrators_authorized_keys` by `provisioning/setup-openssh.ps1`
+- `packer_ed25519` — referenced by Packer QEMU/Hyper-V/VMware recipes (`ssh_private_key_file`)
+- `packer_ed25519.pub` — bundled on the PROVISION CD/floppy; installed to `C:\ProgramData\ssh\administrators_authorized_keys` by [`provisioning/openssh/setup-openssh.ps1`](../openssh/setup-openssh.ps1)
+
+EWS QEMU recipe: [`infrastructure/packer/ews/local-qemu-ews.pkr.hcl`](../../infrastructure/packer/ews/local-qemu-ews.pkr.hcl)
 
 ## TODO / Open issue: secrets management
 

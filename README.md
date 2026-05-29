@@ -50,7 +50,7 @@ Sources are gitignored on `main`; see commit history on that branch for docs and
 
 ## Provisioning direction
 
-Packer re-bakes are too slow for incremental registry/policy changes. **Ansible** is the destination for in-VM convergence; **OpenTofu** (`bpg/proxmox`) is scoped for Proxmox VM lifecycle only. Active plan: [ansible-opentofu-migration.md](docs/refactor/ansible-opentofu-migration.md), [ansible-parity-matrix.md](docs/refactor/ansible-parity-matrix.md), [opentofu-proxmox-scope.md](docs/refactor/opentofu-proxmox-scope.md).
+Packer re-bakes are too slow for incremental registry/policy changes. **Ansible** owns in-guest convergence and Proxmox VM lifecycle (`community.proxmox`). Active plan: [ansible-proxmox-migration.md](docs/refactor/ansible-proxmox-migration.md), [ansible-opentofu-migration.md](docs/refactor/ansible-opentofu-migration.md), [ansible-parity-matrix.md](docs/refactor/ansible-parity-matrix.md).
 
 Do not deepen dual-source drift: read the migration doc before editing `bootstrap_win.ps1` or `scripts/proxmox/rebuild-*.sh`.
 
@@ -82,7 +82,7 @@ Full architecture in [docs/architecture.md](docs/architecture.md).
 
 ## Known refactor backlog
 
-Configuration management is moving from Packer-only to **Ansible + OpenTofu**. An experimental Ansible tree lives under [`ansible/`](ansible/README.md) (`sysmon` + `tightvnc` implemented; other roles scaffolded). Migration status **ACTIVE** — see [ansible-opentofu-migration.md](docs/refactor/ansible-opentofu-migration.md).
+Configuration management is **Packer + Ansible** (in-guest roles and `playbooks/proxmox/` for the hypervisor). See [`ansible/`](ansible/README.md) and [ansible-proxmox-migration.md](docs/refactor/ansible-proxmox-migration.md).
 
 Repo hygiene: run `python3 .claude/skills/repo-audit/audit.py` before/after refactors.
 

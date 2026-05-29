@@ -7,12 +7,46 @@ description: OPNsense firewall + router for the SecretCon lab, deployed as a Pro
 
 ## Status
 
-**Planned, not yet deployed.** The current lab uses Proxmox bridge
-firewalling on `vmbr1` with `192.168.61.1` served directly off the host.
-OPNsense is the target topology under discussion at the firewall + Wazuh
-working group. Treat references here as the design we are building
-toward, not the current production state. Update this section when the
-VM is live.
+**Deployed but passive.** Per
+[`docs/notes/opnsense-discovery-2026-05-14.md`](../../../docs/notes/opnsense-discovery-2026-05-14.md):
+
+- VM is live on Proxmox node `manage`. Resolve the VMID with
+  `qm list | grep -i opnsense` (100s range; not hard-pinned in
+  `docs/architecture.md` yet, see
+  [`scripts/proxmox/snapshot-before-mirror.sh`](../../../scripts/proxmox/snapshot-before-mirror.sh)
+  for the auto-resolve pattern).
+- Interface assignment: `vtnet0` = LAN = `vmbr1` (challenge VLAN,
+  `192.168.61.253`), `vtnet1` = WAN = `vmbr0` (management VLAN,
+  `192.168.60.66`).
+- Firewall rules: **zero**. Filter / NAT / port-forward / NPT all empty.
+  No inter-VLAN routing today.
+- Gateway role: **Proxmox host still owns `192.168.61.1`** as the
+  de-facto challenge VLAN gateway. OPNsense is reachable on `.253` but
+  does not route between `vmbr0` and `vmbr1`.
+- API: `https://192.168.61.253/api/` with HTTP Basic auth (user
+  `dadmin`). Working but path layout differs from upstream docs;
+  expect 404s on non-core endpoints.
+
+The "target topology" in the next section (OPNsense as challenge VLAN
+gateway, routing + filtering both directions) is the design we are
+building toward, not the current state.
+
+### Mirror sensor role (active)
+
+In addition to its passive routing presence above, OPNsense is the
+**SPAN sensor** for `vmbr1`. A third NIC (`vtnet2`, dummy bridge
+`vmbrmirror`, no IP, IDS-only) receives a `tc`-mirror of `vmbr1`
+ingress+egress. Suricata runs on `MIRROR` and ships EVE JSON to
+`wazuh.manager:1514`; pf `filterlog` ships to `wazuh.manager:514`;
+saved packet captures are pushed to the `crit-capture` Arkime VM.
+
+Provisioning:
+[`scripts/proxmox/enable-vmbr1-mirror.sh`](../../../scripts/proxmox/enable-vmbr1-mirror.sh)
+(host-side tc + NIC attach) plus the OPNsense-side Suricata + filterlog
+config under
+[`provisioning/opnsense/`](../../../provisioning/opnsense/). See
+[`docs/runbooks/opnsense-vnc-brute-analyst-challenge.md`](../../../docs/runbooks/opnsense-vnc-brute-analyst-challenge.md)
+for the analyst challenge that uses this path.
 
 ## When this skill applies
 

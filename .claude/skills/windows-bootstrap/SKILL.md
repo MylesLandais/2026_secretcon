@@ -52,7 +52,7 @@ If you are only changing Packer builder blocks (QEMU vs Proxmox vs Hyper-V), see
 - [provisioning/powershell/bootstrap_cysvuln.ps1](provisioning/powershell/bootstrap_cysvuln.ps1)
 - [provisioning/powershell/bootstrap_win.ps1](provisioning/powershell/bootstrap_win.ps1)
 - [provisioning/powershell/bootstrap_dc.ps1](provisioning/powershell/bootstrap_dc.ps1)
-- [docs/cysvulnserver/walkthrough.md](docs/cysvulnserver/walkthrough.md)
+- [docs/cysvulnserver/attack-faq-walkthrough.md](docs/cysvulnserver/attack-faq-walkthrough.md)
 
 ## Common pitfalls
 

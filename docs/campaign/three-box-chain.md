@@ -69,6 +69,8 @@ export SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD='PizzaMan123!'
 
 - **Shared local Administrator password** on CysVuln + EWS (`SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD`).
 - **`enite`**: AS-REP roastable, weak password `stud87`, RC4, member of **Domain Admins** when `SECRETCON_ASREP_ENITE_DA=1`.
+- **Defender on EWS**: `C:\Users\Public` excluded, real-time monitoring off, `.exe` extension excluded so Rubeus runs without SmartScreen. A `SecretConDefenderRelax` scheduled task reapplies on boot in case Tamper Protection re-enables RTP.
+- **RC4 enforced on DC and `enite`**: `ksetup /setenctypeattr` + `Set-ADUser -KerberosEncryptionType RC4` so the AS-REP comes back as etype 0x17 (`hashcat -m 18200`) instead of AES.
 - **No domain join** required on CysVuln/EWS for roasting — only L3 + DNS to the DC.
 
 ## Observability
@@ -80,6 +82,6 @@ export SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD='PizzaMan123!'
 
 Each challenge still runs independently:
 
-- CysVuln only: [docs/cysvulnserver/walkthrough.md](../cysvulnserver/walkthrough.md)
+- CysVuln only: [docs/cysvulnserver/attack-faq-walkthrough.md](../cysvulnserver/walkthrough.md)
 - EWS only: [docs/runbooks/ews-vnc-adversary-emulation.md](../runbooks/ews-vnc-adversary-emulation.md)
-- ASREP only: [docs/asrep/walkthrough.md](../asrep/walkthrough.md) — set `SECRETCON_ASREP_ENITE_DA=0` and omit DC root flag requirement.
+- ASREP only: [docs/asrep/attack-faq-walkthrough.md](../asrep/walkthrough.md) — set `SECRETCON_ASREP_ENITE_DA=0` and omit DC root flag requirement.

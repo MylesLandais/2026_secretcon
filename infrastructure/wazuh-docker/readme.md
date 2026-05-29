@@ -80,7 +80,7 @@ snapshot-lifecycle tables live in
 2. `config/wazuh_cluster/local_rules.xml` - 13 custom rules
    (`100501-100517`) for CysVuln walkthrough phases, with the msiexec
    deep-dive coverage (`100510-100517`) called out in
-   [docs/cysvulnserver/blue-faq-walkthrough.md](../../docs/cysvulnserver/blue-faq-walkthrough.md).
+   [docs/cysvulnserver/defend-faq-walkthrough.md](../../docs/cysvulnserver/defend-faq-walkthrough.md).
 3. `config/wazuh_cluster/shared/ews/agent.conf` - subscribes the
    `ews`-group agents to `Microsoft-Windows-Sysmon/Operational`,
    `Microsoft-Windows-MSI/Operational`, and the
