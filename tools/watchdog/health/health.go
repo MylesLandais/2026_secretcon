@@ -38,7 +38,7 @@ func LivenessOK(cfg *config.Config) bool {
 		return false
 	}
 	if cfg.TCPProbe != nil {
-		addr := fmt.Sprintf("%s:%d", cfg.TCPProbe.Host, cfg.TCPProbe.Port)
+		addr := net.JoinHostPort(cfg.TCPProbe.Host, fmt.Sprintf("%d", cfg.TCPProbe.Port))
 		conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 		if err != nil {
 			return false

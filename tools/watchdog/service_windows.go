@@ -71,13 +71,13 @@ func installWatchdogService(exeArg0, configPath string) error {
 	if err != nil {
 		return err
 	}
-	binPath := fmt.Sprintf(`"%s" --config "%s"`, exe, configPath)
+	binPathArg := fmt.Sprintf(`binPath= "%s" --config "%s"`, exe, configPath)
 	_ = exec.Command("sc.exe", "stop", winServiceName).Run()
 	_ = exec.Command("sc.exe", "delete", winServiceName).Run()
 	out, err := exec.Command("sc.exe", "create", winServiceName,
-		"binPath=", binPath,
-		"start=", "auto",
-		"DisplayName=", "SecretCon Challenge Watchdog",
+		binPathArg,
+		"start= auto",
+		"DisplayName= SecretCon Challenge Watchdog",
 	).CombinedOutput()
 	if err != nil && !strings.Contains(string(out), "SUCCESS") {
 		return fmt.Errorf("%w: %s", err, out)

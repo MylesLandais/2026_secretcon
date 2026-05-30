@@ -37,6 +37,35 @@ FAIL=0
 
 log() { echo "[resilience] $*"; }
 
+log "fast gate (no QEMU)"
+./scripts/validate/resilience-gate-fast.sh || exit 1
+
+converge_watchdog_ews() {
+    nix develop -c ansible-playbook ansible/playbooks/ews.yml \
+        -i "127.0.0.1," \
+        -e "ansible_host=127.0.0.1" \
+        -e "ansible_port=${EWS_SSH_PORT:-2222}" \
+        -e "ansible_user=Administrator" \
+        -e "ansible_password=${ANSIBLE_ADMIN_PASSWORD:-${SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD:-PizzaMan123!}}" \
+        -e "ansible_connection=ssh" \
+        -e "ansible_shell_type=powershell" \
+        --tags watchdog_agent \
+        --skip-tags always
+}
+
+converge_watchdog_cysvuln() {
+    nix develop -c ansible-playbook ansible/playbooks/cysvuln.yml \
+        -i "127.0.0.1," \
+        -e "ansible_host=127.0.0.1" \
+        -e "ansible_port=${WINRM_PORT:-15985}" \
+        -e "ansible_user=Administrator" \
+        -e "ansible_password=${ANSIBLE_ADMIN_PASSWORD:-${SECRETCON_SHARED_LOCAL_ADMIN_PASSWORD:-PizzaMan123!}}" \
+        -e "ansible_connection=winrm" \
+        -e "ansible_winrm_transport=ntlm" \
+        --tags watchdog_agent \
+        --skip-tags always
+}
+
 ensure_qcow() {
     local flake attr disk hint
     flake="$1"; attr="$2"; disk="$3"; hint="$4"
@@ -98,6 +127,10 @@ run_test() {
 
 if [ "$RUN_CYS" -eq 1 ]; then
     if start_cysvuln; then
+        log "converge watchdog_agent on CysVuln"
+        converge_watchdog_cysvuln || true
+        run_test cysvuln_watchdog_agent "${REPO_ROOT}/scripts/validate/test-watchdog-agent.sh" --target 127.0.0.1 --winrm-port "${WINRM_PORT:-15985}" --profile cysvuln
+        run_test cysvuln_watchdog_supervisor "${REPO_ROOT}/scripts/validate/test-watchdog-supervisor.sh" --target 127.0.0.1 --winrm-port "${WINRM_PORT:-15985}"
         run_test cysvuln_efs_crash "${REPO_ROOT}/scripts/validate/test-cysvuln-efs-crash.sh" 127.0.0.1
         run_test cysvuln_efs_clean "${REPO_ROOT}/scripts/validate/test-cysvuln-efs-clean.sh" 127.0.0.1
     else
@@ -108,6 +141,10 @@ fi
 
 if [ "$RUN_EWS" -eq 1 ]; then
     if start_ews; then
+        log "converge watchdog_agent on EWS"
+        converge_watchdog_ews || true
+        run_test ews_watchdog_agent "${REPO_ROOT}/scripts/validate/test-watchdog-agent.sh" --target 127.0.0.1 --winrm-port 5985 --profile ews
+        run_test ews_watchdog_supervisor "${REPO_ROOT}/scripts/validate/test-watchdog-supervisor.sh" --target 127.0.0.1 --winrm-port 5985
         run_test ews_lpe_crash "${REPO_ROOT}/scripts/validate/test-ews-lpe-crash.sh" --target 127.0.0.1
         run_test ews_lpe_clean "${REPO_ROOT}/scripts/validate/test-ews-lpe-clean.sh" --target 127.0.0.1 --no-reset
     else
