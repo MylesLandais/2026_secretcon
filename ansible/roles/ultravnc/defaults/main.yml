@@ -11,6 +11,8 @@ ultravnc_ini_path: "{{ ultravnc_install_dir }}\\ultravnc.ini"
 ultravnc_service_name: uvnc_service
 ultravnc_scheduled_task_name: SecretCon-UltraVNC-Run
 ultravnc_listen_port: 5900
+# Packer local-QEMU forwards SSH to 127.0.0.1; guest services listen on slirp 10.0.2.15.
+ultravnc_rfb_probe_host: "{{ '10.0.2.15' if ansible_host in ['127.0.0.1', 'localhost'] else ansible_host }}"
 
 ultravnc_firewall_rule_name: SecretCon-UltraVNC-In-TCP
 ultravnc_firewall_rule_display_name: SecretCon UltraVNC Server

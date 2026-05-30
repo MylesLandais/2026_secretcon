@@ -1,0 +1,30 @@
+---
+# Clone primary EWS VM to a standby VMID for Layer 4 failover (operator-run).
+- name: Deploy EWS standby clone on Proxmox
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ews_primary_vmid: "{{ ews_vmid | default(109) }}"
+    ews_standby_vmid: "{{ ews_standby_vmid | default(120) }}"
+    ews_standby_name: secretcon-ews-standby
+  tasks:
+    - name: Clone EWS primary to standby VMID
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user | default('root@pam') }}"
+        api_password: "{{ proxmox_password }}"
+        node: manage
+        vmid: "{{ ews_primary_vmid }}"
+        clone: "{{ ews_standby_name }}"
+        newid: "{{ ews_standby_vmid }}"
+        name: "{{ ews_standby_name }}"
+        full: true
+        state: present
+      register: ews_standby_clone
+      when: not ansible_check_mode
+
+    - name: Note standby snapshot
+      ansible.builtin.debug:
+        msg: >-
+          After first boot, run baseline-snapshot-ews.sh --vmid {{ ews_standby_vmid }}
+          and set EWS_BACKEND_STANDBY to standby IP in .env

@@ -35,8 +35,11 @@ This is lab validation tooling, not player-facing exploit delivery in production
 
 ### Shell wrappers
 
-- `scripts/verify-cysvuln.sh` — post-build smoke (WinRM registry + flags).
+- `scripts/verify-cysvuln.sh` — post-build smoke (WinRM registry + flags + **gated** `fswsService`/HTTP).
 - `scripts/validate-cysvuln-chain.sh` — prep + smoke + audit + MSI stage + `run_aie_via_efs_callback.py`.
+- `scripts/validate/test-cysvuln-efs-crash.sh` — exec stager crash + recovery gate.
+- `scripts/validate/test-cysvuln-efs-clean.sh` — callback foothold without killing HTTP.
+- `scripts/validate/resilience-local-qemu.sh` — local QEMU orchestrator (EWS + CysVuln crash/clean pairs).
 - `scripts/test-local.sh` — `pytest` on `scripts/validate/tests/`.
 
 ### Dependencies

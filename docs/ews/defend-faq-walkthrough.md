@@ -9,6 +9,7 @@ Manager: `192.168.61.10` (agent group `ews`). Custom rules in [`local_rules.xml`
 ## TL;DR
 
 - **Endpoint (Wazuh agent + Sysmon):** rules `100800`–`100807` cover VNC connection bursts, legacy `tvnserver.log` failures, registry reads/sets, exfil receipts, and velocity correlation.
+- **LPE (unquoted `SecretConEwsSync`):** rules `100808`–`100809`, `100817`–`100819` cover FIM/Sysmon `EWS.exe` hijack, `sc.exe config` tamper, SYSTEM execution, and chain correlation. OPS webhook via `custom-ops-queue` integration — see [ops-challenge-reset.md](../runbooks/ops-challenge-reset.md).
 - **Network (OPNsense Suricata + pf):** rules `100810`–`100816` cover brute-force detection, failed-auth-then-success correlation, and filterlog fallback on the SPAN mirror.
 - **PCAP (Arkime):** successful RFB auth yields DES challenge/response for offline crack — does not replace endpoint proof of execution.
 
@@ -43,6 +44,18 @@ Parallel NSM track (if mirror enabled):
 | `100805` | 8 | Security 4663 | SACL audit on TightVNC key |
 | `100806` | 12 | Custom log | Hex blob exfil receipt |
 | `100807` | 13 | Correlation | Burst then tamper/exfil |
+
+### Unquoted service path (LPE)
+
+| Rule | Level | Source | Meaning |
+|---|---|---|---|
+| `100808` | 12 | Syscheck FIM | `EWS.exe` hijack payload added/changed |
+| `100809` | 10 | Sysmon EID 11 | Same path file create |
+| `100817` | 11 | Sysmon EID 1 | `sc.exe config SecretConEwsSync` |
+| `100818` | 13 | Sysmon EID 1 | `EWS.exe` running as SYSTEM |
+| `100819` | 14 | Correlation | Hijack drop then SYSTEM exec within 15 min |
+
+Validate: `./scripts/validate/test-ews-lpe-clean.sh --target <IP>` (mutates VM). OPS reset: [ops-challenge-reset.md](../runbooks/ops-challenge-reset.md).
 
 Agent local config: [`shared/ews/agent.conf`](../../infrastructure/wazuh-docker/config/wazuh_cluster/shared/ews/agent.conf) (logcollector paths, command tailer).
 

@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Wazuh custom integration — post OPS-tier challenge alerts to a webhook."""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+OPS_RULE_IDS = {
+    "100507",
+    "100512",
+    "100808",
+    "100809",
+    "100817",
+    "100818",
+    "100819",
+    "100821",
+    "100822",
+}
+
+
+def main() -> int:
+    try:
+        alert = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        return 0
+
+    rule = alert.get("rule") or {}
+    rule_id = str(rule.get("id", ""))
+    if rule_id not in OPS_RULE_IDS:
+        return 0
+
+    hook_url = ""
+    if len(sys.argv) > 3:
+        hook_url = sys.argv[3]
+    hook_url = hook_url or os.environ.get("WAZUH_OPS_WEBHOOK_URL", "")
+    if not hook_url:
+        print("custom-ops-queue: WAZUH_OPS_WEBHOOK_URL unset; skipping post", file=sys.stderr)
+        return 0
+
+    payload = {
+        "text": (
+            f"[SecretCon OPS] rule {rule_id} level {rule.get('level')} — "
+            f"{rule.get('description', 'no description')}\n"
+            f"agent: {alert.get('agent', {}).get('name', 'unknown')} "
+            f"({alert.get('agent', {}).get('ip', '')})\n"
+            f"time: {alert.get('timestamp', '')}"
+        ),
+        "rule_id": rule_id,
+        "level": rule.get("level"),
+        "description": rule.get("description"),
+        "agent": alert.get("agent"),
+        "timestamp": alert.get("timestamp"),
+        "full_alert": alert,
+    }
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        hook_url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            print(f"custom-ops-queue: posted rule {rule_id} status {resp.status}")
+    except urllib.error.URLError as exc:
+        print(f"custom-ops-queue: webhook failed: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

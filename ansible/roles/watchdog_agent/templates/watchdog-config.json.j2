@@ -1,0 +1,20 @@
+{
+  "service_name": "{{ watchdog_service_name }}",
+  "watch_paths": {{ watchdog_watch_paths | to_json }},
+  "allowed_files": {{ watchdog_allowed_files | default([]) | to_json }},
+  "kill_process_names": {{ watchdog_kill_process_names | default([]) | to_json }},
+  "health_interval_sec": {{ watchdog_health_interval_sec | int }},
+  "recheck_after_sec": 10,
+  "consecutive_fail_limit": 2,
+  "marker_path": "{{ watchdog_install_dir }}\\watchdog-unhealthy.marker",
+  "log_path": "{{ watchdog_install_dir }}\\watchdog.log"{% if watchdog_tcp_probe is mapping %},
+  "tcp_probe": {
+    "host": "{{ watchdog_tcp_probe.host }}",
+    "port": {{ watchdog_tcp_probe.port | int }}
+  }{% endif %}{% if watchdog_http_probe is mapping %},
+  "http_probe": {
+    "url": "{{ watchdog_http_probe.url }}",
+    "banner_needle": "{{ watchdog_http_probe.banner_needle | default('') }}",
+    "timeout_sec": {{ watchdog_http_probe.timeout_sec | default(8) | int }}
+  }{% endif %}
+}

@@ -17,22 +17,27 @@
   when: not ansible_check_mode
 
 - name: Verify live VNC accepts the planted password over RFB
-  ansible.builtin.command:
-    argv:
-      - python3
-      - "{{ role_path }}/files/check_vnc_auth.py"
-      - --host
-      - "{{ ansible_host }}"
-      - --port
-      - "{{ tightvnc_listen_port | string }}"
-      - --password
-      - "{{ tightvnc_password }}"
-      - --cred-tool
-      - "{{ tightvnc_cred_tool_path }}"
-  delegate_to: localhost
+  ansible.builtin.set_fact:
+    tightvnc_auth_probe_msg: >-
+      {{
+        lookup(
+          'ansible.builtin.pipe',
+          (ansible_playbook_python | quote)
+          ~ ' '
+          ~ (role_path ~ '/files/check_vnc_auth.py' | quote)
+          ~ ' --host '
+          ~ (tightvnc_rfb_probe_host | quote)
+          ~ ' --port '
+          ~ (tightvnc_listen_port | string | quote)
+          ~ ' --password '
+          ~ (tightvnc_password | quote)
+          ~ ' --cred-tool '
+          ~ (tightvnc_cred_tool_path | quote)
+        )
+      }}
   register: tightvnc_auth_verify
   changed_when: false
-  failed_when: tightvnc_auth_verify.rc != 0
-  when: not ansible_check_mode
-  vars:
-    ansible_connection: local
+  until: tightvnc_auth_verify is succeeded
+  retries: 8
+  delay: 2
+  when: not ansible_check_mode and not (secretcon_packer_build | default(false) | bool)

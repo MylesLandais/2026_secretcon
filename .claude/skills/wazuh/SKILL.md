@@ -60,12 +60,22 @@ Custom rule pack in `config/wazuh_cluster/local_rules.xml`:
      replayed on every deploy by
      `scripts/observability/vnc-replay-on-deploy.sh`. Full procedure in
      `docs/runbooks/ews-vnc-adversary-emulation.md`.
+   - `100808-100809`, `100817-100819` — EWS unquoted service path LPE:
+     FIM/Sysmon on `C:\Program Files\SecretCon\EWS.exe`, `sc.exe config
+     SecretConEwsSync`, SYSTEM execution of hijack payload, velocity
+     correlation. Validated by `scripts/validate/test-ews-lpe-*.sh` and
+     `scripts/observability/ews-lpe-wazuh-proof.sh`. OPS alerts via
+     `integrations/custom-ops-queue`.
+   - `100820-100822` — CysVuln EFS OPS tier: unexpected EFS root exe
+     (FIM), `fswsService` stopped (7036), crash-to-AIE correlation.
+     Validated by `scripts/validate/test-cysvuln-efs-*.sh`.
 
    The `ews` agent group's `shared/ews/agent.conf` adds the Sysmon +
    MSI/Operational + `C:\Users\Public\aie-*.log` + EFS access log +
    `C:\Users\Public\audit-aie-*.json` +
    `C:\Program Files\TightVNC\tvnserver.log` +
-   `C:\Users\Public\vnc-pwd-dump.txt` subscriptions that the
+   `C:\Users\Public\vnc-pwd-dump.txt` + **syscheck FIM** on
+   `C:\Program Files\SecretCon` subscriptions that the
    SwiftOnSecurity sysmon config alone does not enable on the manager
    side. Manager runs with `<logall_json>yes</logall_json>` so the
    capture loop produces forensic-grade `archives.json` (every decoded

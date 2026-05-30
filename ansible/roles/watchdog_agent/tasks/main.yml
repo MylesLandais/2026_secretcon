@@ -1,0 +1,64 @@
+---
+- name: Load watchdog profile variables
+  ansible.builtin.include_vars: "{{ watchdog_profile }}.yml"
+
+- name: Configure challenge service SCM failure recovery (CysVuln)
+  ansible.windows.win_command: >-
+    sc.exe failure {{ watchdog_service_name }}
+    reset= 86400
+    actions= restart/5000/restart/10000/none/0
+  register: watchdog_scm_failure
+  changed_when: watchdog_scm_failure.rc == 0
+  when:
+    - not ansible_check_mode
+    - watchdog_profile == 'cysvuln'
+
+- name: Ensure watchdog install directory exists
+  ansible.windows.win_file:
+    path: "{{ watchdog_install_dir }}"
+    state: directory
+
+- name: Deploy secretcon-watchdog binary
+  ansible.windows.win_copy:
+    src: secretcon-watchdog.exe
+    dest: "{{ watchdog_binary_path }}"
+
+- name: Deploy watchdog JSON config
+  ansible.windows.win_template:
+    src: watchdog-config.json.j2
+    dest: "{{ watchdog_config_path }}"
+
+- name: Deploy watchdog supervisor scheduled task XML
+  ansible.windows.win_template:
+    src: watchdog-supervisor-task.xml.j2
+    dest: "{{ watchdog_supervisor_task_xml_path }}"
+
+- name: Register watchdog supervisor scheduled task
+  ansible.windows.win_command: >-
+    schtasks.exe /Create
+    /TN "{{ watchdog_supervisor_task_name }}"
+    /XML "{{ watchdog_supervisor_task_xml_path }}"
+    /F
+  register: watchdog_supervisor_register
+  changed_when: "'SUCCESS' in (watchdog_supervisor_register.stdout | upper)"
+  when: not ansible_check_mode
+
+- name: Install SecretConWatchdog Windows service
+  ansible.windows.win_command: >-
+    {{ watchdog_binary_path }}
+    --config "{{ watchdog_config_path }}"
+    --install
+  register: watchdog_install_svc
+  changed_when: watchdog_install_svc.rc == 0
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - watchdog_run_install_on_deploy | bool
+
+- name: Run watchdog supervisor task once
+  ansible.windows.win_command: schtasks.exe /Run /TN "{{ watchdog_supervisor_task_name }}"
+  changed_when: false
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - watchdog_run_supervisor_now | bool

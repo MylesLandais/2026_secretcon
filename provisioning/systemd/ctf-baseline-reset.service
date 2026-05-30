@@ -1,0 +1,14 @@
+[Unit]
+Description=SecretCon CTF challenge VM baseline rollback (event window only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/secretcon/ctf-reset.env
+WorkingDirectory=/opt/secretcon
+ExecStart=/opt/secretcon/scripts/host/ctf-baseline-reset.sh --vmid 109 --vmid 119
+# Requires CTF_SCHEDULED_RESET_ENABLED=1 in EnvironmentFile
+
+[Install]
+WantedBy=multi-user.target

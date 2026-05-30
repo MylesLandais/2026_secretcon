@@ -24,15 +24,19 @@
     - role: ultravnc
       tags: [ultravnc, foothold]
     - role: ews_lpe_service
-      tags: [ews_lpe_service, ews_lpe_reset, privesc]
+      tags: [ews_lpe_service, ews_lpe_reset, privesc, ews_lpe_recovery]
+    - role: watchdog_agent
+      vars:
+        watchdog_profile: ews
+      tags: [watchdog_agent, ews_lpe_watchdog, ews_lpe_recovery, privesc]
+    - role: autologon
+      tags: [autologon]
     - role: flags
       tags: [flags]
     - role: ews_reset_task
       tags: [ews_reset_task, ews_lpe_reset, privesc, foothold]
     - role: defender_relax
       tags: [defender_relax]
-    - role: autologon
-      tags: [autologon]
     - role: ews_vnc_desktop
       tags: [ews_vnc_desktop, foothold]
     - role: ews_network

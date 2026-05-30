@@ -1,0 +1,18 @@
+---
+- name: Query SecretConEwsSync failure actions
+  ansible.windows.win_command: sc.exe qfailure {{ ews_lpe_service_name }}
+  register: ews_lpe_qfailure
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Configure SecretConEwsSync SCM failure recovery
+  ansible.windows.win_command: >-
+    sc.exe failure {{ ews_lpe_service_name }}
+    reset= {{ ews_lpe_failure_reset_seconds }}
+    actions= {{ ews_lpe_failure_actions }}
+  register: ews_lpe_failure_set
+  changed_when: ews_lpe_failure_set.rc == 0
+  when:
+    - not ansible_check_mode
+    - ews_lpe_configure_failure_recovery | bool

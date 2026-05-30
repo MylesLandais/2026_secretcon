@@ -1,0 +1,12 @@
+---
+watchdog_service_name: SecretConEwsSync
+watchdog_watch_paths:
+  - 'C:\Program Files\SecretCon'
+  - 'C:\Program Files\SecretCon\EWS Sync'
+watchdog_allowed_files:
+  - ews_sync.exe
+  - EWS Sync
+watchdog_kill_process_names: []
+watchdog_health_interval_sec: 15
+watchdog_tcp_probe: null
+watchdog_http_probe: null

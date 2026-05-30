@@ -369,6 +369,14 @@
 		</NetworkConnect>
 	</RuleGroup>
 
+	<!--SecretCon: TCP/80 connections involving fswsService.exe (Wazuh 100503).-->
+	<RuleGroup name="SecretConEfsHttp" groupRelation="and">
+		<NetworkConnect onmatch="include">
+			<Image condition="end with">fswsService.exe</Image>
+			<DestinationPort condition="is">80</DestinationPort>
+		</NetworkConnect>
+	</RuleGroup>
+
 	<RuleGroup name="" groupRelation="or">
 		<NetworkConnect onmatch="exclude">
 			<!--SECTION: Microsoft-->

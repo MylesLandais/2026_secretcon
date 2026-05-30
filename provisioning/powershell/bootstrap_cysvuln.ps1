@@ -98,12 +98,8 @@ if (Test-Path $adminHive) {
     Set-SecretConHivePrompts -HivePath $adminHive -MountName "SecretConAdmin"
 }
 
-# Belt-and-suspenders: kill the Windows Update + Update-Orchestrator
-# services so MoUsoCoreWorker.exe never resurrects the overlay.
-foreach ($svc in @("wuauserv","UsoSvc","WaaSMedicSvc")) {
-    Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-    Set-Service  -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
-}
+# Belt-and-suspenders: machine-scope WU policy + stop update services.
+Set-SecretConUpdatePromptSuppression
 
 # Low-priv user: matches Cy's documented Notes.txt account
 $pwSecure = ConvertTo-SecureString $joePw -AsPlainText -Force
@@ -304,6 +300,44 @@ try {
 } catch {
     Write-Warning "fswsService did not start in-band ($($_.Exception.Message)); will start on next boot (StartupType=Automatic)"
 }
+
+# SCM failure recovery + EFS health watchdog (SecretCon resilience layer).
+& sc.exe failure fswsService reset= 86400 actions= restart/5000/restart/10000/none/0 | Out-Null
+$efsWatchdogPath = 'C:\secretcon\watch-cysvuln-efs.ps1'
+if (-not (Test-Path -LiteralPath $efsWatchdogPath)) {
+    $efsWatchdogBody = @'
+# Keep fswsService + EFS HTTP :80 available for CysVuln challenge instances.
+$ErrorActionPreference = 'SilentlyContinue'
+$svcName = 'fswsService'
+$logPath = 'C:\secretcon\efs-watchdog.log'
+function Write-WatchLog { param([string]$Message); Add-Content -LiteralPath $logPath -Encoding ascii -Value "[$((Get-Date).ToString('o'))] $Message" }
+function Restart-EfsService {
+    Get-Process -Name fsws,fswsService -EA SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Seconds 2; sc.exe stop $svcName | Out-Null; Start-Sleep -Seconds 2; sc.exe start $svcName | Out-Null; Start-Sleep -Seconds 3
+}
+while ($true) {
+    $svc = Get-Service -Name $svcName -EA SilentlyContinue
+    $needsRestart = (-not $svc -or $svc.Status -ne 'Running')
+    if (-not $needsRestart) {
+        $tcp = Test-NetConnection -ComputerName 127.0.0.1 -Port 80 -WarningAction SilentlyContinue
+        if (-not $tcp.TcpTestSucceeded) { $needsRestart = $true }
+    }
+    if ($needsRestart) { Write-WatchLog "restarting fswsService"; Restart-EfsService }
+    Start-Sleep -Seconds 45
+}
+'@
+    New-Item -ItemType Directory -Force -Path 'C:\secretcon' | Out-Null
+    Set-Content -LiteralPath $efsWatchdogPath -Value $efsWatchdogBody -Encoding UTF8
+}
+$efsTaskName = 'SecretCon-CysVuln-EFS-Watchdog'
+if (-not (Get-ScheduledTask -TaskName $efsTaskName -ErrorAction SilentlyContinue)) {
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$efsWatchdogPath`""
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+    Register-ScheduledTask -TaskName $efsTaskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+    Start-ScheduledTask -TaskName $efsTaskName -ErrorAction SilentlyContinue
+}
+Write-Host '[*] fswsService SCM failure policy + EFS watchdog registered'
 
 # Firewall - Cy's pending build-steps
 Enable-NetFirewallRule -Name FPS-ICMP4-ERQ-In -ErrorAction SilentlyContinue

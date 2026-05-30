@@ -128,6 +128,38 @@
     </mitre>
   </rule>
 
+  <!-- 100820-100822: CysVuln EFS OPS-tier signals (100813/100815 reserved for OPNsense NSM). -->
+  <rule id="100820" level="12">
+    <if_group>syscheck</if_group>
+    <match type="pcre2">(?i)\\EFS Software\\Easy File Sharing Web Server\\(?!fswsService\.exe|fsws\.exe)[^\\]+\.exe$</match>
+    <description>SecretCon CysVuln: unexpected executable under EFS install root</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+  </rule>
+
+  <rule id="100821" level="12">
+    <decoded_as>windows_eventchannel</decoded_as>
+    <field name="win.system.providerName" type="pcre2">^Service Control Manager$</field>
+    <field name="win.system.eventID" type="pcre2">^7036$</field>
+    <field name="win.eventdata.param1" type="pcre2">(?i)^fswsService$</field>
+    <field name="win.eventdata.param2" type="pcre2">(?i)^stopped$</field>
+    <description>SecretCon CysVuln: fswsService entered stopped state</description>
+    <mitre>
+      <id>T1499.004</id>
+    </mitre>
+  </rule>
+
+  <rule id="100822" level="14" frequency="2" timeframe="1800">
+    <if_matched_sid>100507</if_matched_sid>
+    <if_sid>100512</if_sid>
+    <description>SecretCon CysVuln: EFS foothold crash followed by AIE privesc within 30 minutes</description>
+    <mitre>
+      <id>T1190</id>
+      <id>T1548.002</id>
+    </mitre>
+  </rule>
+
   <!-- 100508 / 100509: enumeration tool attribution. Low level so they
        reach alerts.json for pivot but do not flood the dashboard. -->
   <rule id="100508" level="6">
@@ -531,6 +563,56 @@
     <mitre>
       <id>T1110</id>
       <id>T1552.002</id>
+    </mitre>
+  </rule>
+
+  <!-- 100808-100809, 100817-100819: EWS unquoted service path LPE stage.
+       IDs 100810-100816 are reserved for OPNsense NSM (Suricata/pf). -->
+
+  <rule id="100808" level="12">
+    <if_group>syscheck</if_group>
+    <match type="pcre2">(?i)\\Program Files\\SecretCon\\EWS\.exe</match>
+    <description>SecretCon EWS: FIM new/changed EWS.exe hijack payload (unquoted path LPE)</description>
+    <mitre>
+      <id>T1574.009</id>
+    </mitre>
+  </rule>
+
+  <rule id="100809" level="10">
+    <if_group>sysmon_event_11</if_group>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\Program Files\\SecretCon\\EWS\.exe$</field>
+    <description>SecretCon EWS: Sysmon file create EWS.exe hijack payload</description>
+    <mitre>
+      <id>T1574.009</id>
+    </mitre>
+  </rule>
+
+  <rule id="100817" level="11">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\sc\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)config\s+SecretConEwsSync</field>
+    <description>SecretCon EWS: sc.exe config SecretConEwsSync (ImagePath tamper)</description>
+    <mitre>
+      <id>T1543.003</id>
+    </mitre>
+  </rule>
+
+  <rule id="100818" level="13">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\Program Files\\SecretCon\\EWS\.exe$</field>
+    <field name="win.eventdata.user" type="pcre2">(?i)SYSTEM|AUTORITE NT\\Système</field>
+    <description>SecretCon EWS: EWS.exe executed as SYSTEM (unquoted path privesc receipt)</description>
+    <mitre>
+      <id>T1574.009</id>
+    </mitre>
+  </rule>
+
+  <rule id="100819" level="14" frequency="2" timeframe="900">
+    <if_matched_sid>100808</if_matched_sid>
+    <if_sid>100818</if_sid>
+    <description>SecretCon EWS: EWS.exe drop followed by SYSTEM execution within 15 minutes (LPE chain)</description>
+    <mitre>
+      <id>T1574.009</id>
     </mitre>
   </rule>
 

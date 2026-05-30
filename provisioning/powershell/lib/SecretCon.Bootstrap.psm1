@@ -25,7 +25,7 @@ function Find-ProvisionFile {
 function Install-SecretConSysmon {
     param(
         [string]$ConfigName = "sysmonconfig.xml",
-        [string]$ExpectedSha = $(if ($env:SYSMON_CONFIG_SHA256) { $env:SYSMON_CONFIG_SHA256 } else { "747fe516fb5319962106081ae2ce30f769ad2e4e99db7120ccda726c290b12eb" }),
+        [string]$ExpectedSha = $(if ($env:SYSMON_CONFIG_SHA256) { $env:SYSMON_CONFIG_SHA256 } else { "3913586d252d9a32319feb33e3715d3160a29476c480a807fd5a7992136504b4" }),
         [string]$InstallDir = "C:\secretcon"
     )
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -100,6 +100,29 @@ function Install-SecretConWazuhAgent {
     }
 }
 
+function Set-SecretConUpdatePromptSuppression {
+    <#
+    Machine + service scope: suppress Server Manager and Windows Update overlays.
+    Matches provisioning/proxmox/autounattend.xml specialize pass (CysVuln recon cyv-005).
+    #>
+    $machineReg = @(
+        @('HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU', 'NoAutoUpdate', 'REG_DWORD', '1'),
+        @('HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', 'DoNotConnectToWindowsUpdateInternetLocations', 'REG_DWORD', '1'),
+        @('HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', 'SetDisableUXWUAccess', 'REG_DWORD', '1'),
+        @('HKLM\SOFTWARE\Microsoft\ServerManager', 'DoNotOpenServerManagerAtLogon', 'REG_DWORD', '1')
+    )
+    foreach ($entry in $machineReg) {
+        & reg.exe add $entry[0] /v $entry[1] /t $entry[2] /d $entry[3] /f | Out-Null
+    }
+    foreach ($svc in @('wuauserv', 'UsoSvc', 'WaaSMedicSvc')) {
+        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+        Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+    }
+    Get-Process -Name 'ServerManager', 'MusNotification', 'MusNotificationUx' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Host '[*] Windows Update / Server Manager prompts suppressed (machine scope)'
+}
+
 function Register-SecretConLogonSeederTask {
     param(
         [Parameter(Mandatory = $true)]
@@ -129,5 +152,6 @@ Export-ModuleMember -Function @(
     'Find-ProvisionFile',
     'Install-SecretConSysmon',
     'Install-SecretConWazuhAgent',
+    'Set-SecretConUpdatePromptSuppression',
     'Register-SecretConLogonSeederTask'
 )

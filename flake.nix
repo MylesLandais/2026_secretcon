@@ -56,6 +56,7 @@
           wireshark-cli
           thc-hydra
           tigervnc
+          virt-viewer
           sshpass
         ];
       in
@@ -225,6 +226,22 @@
           installPhase = ''
             mkdir -p $out
             cp -r packer-output/asrep-local/*.qcow2 $out/
+          '';
+        };
+
+        # Windows amd64 challenge watchdog agent (Ansible watchdog_agent role)
+        packages.secretcon-watchdog = pkgs.stdenv.mkDerivation {
+          pname = "secretcon-watchdog";
+          version = "0.1.0";
+          src = ./tools/watchdog;
+          nativeBuildInputs = [ pkgs.go ];
+          buildPhase = ''
+            export GOOS=windows GOARCH=amd64 CGO_ENABLED=0
+            go mod tidy
+            go build -o secretcon-watchdog.exe .
+          '';
+          installPhase = ''
+            install -Dm755 secretcon-watchdog.exe $out/secretcon-watchdog.exe
           '';
         };
 

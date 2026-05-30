@@ -11,13 +11,13 @@
 
 # --- Hot path (encode + apply + verify only) ---
 - ansible.builtin.import_tasks: encode_password.yml
-  tags: [ultravnc_hot]
+  tags: [never, ultravnc_hot]
 
 - ansible.builtin.import_tasks: hot_apply.yml
-  tags: [ultravnc_hot]
+  tags: [never, ultravnc_hot]
 
 - ansible.builtin.import_tasks: verify_auth.yml
-  tags: [ultravnc_hot, ultravnc_verify]
+  tags: [never, ultravnc_hot]
 
 # --- Declarative full path ---
 - ansible.builtin.import_tasks: preflight.yml

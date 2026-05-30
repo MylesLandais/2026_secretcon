@@ -80,12 +80,16 @@
   when: not ansible_check_mode
 
 - name: Create SecretConEwsSync Windows service (unquoted ImagePath)
-  ansible.windows.win_command: >-
-    sc.exe create {{ ews_lpe_service_name }}
-    binPath= {{ ews_lpe_service_exe }}
-    start= auto
-    obj= LocalSystem
-    DisplayName= "{{ ews_lpe_service_display_name }}"
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $svcName = '{{ ews_lpe_service_name }}'
+      $imagePath = '{{ ews_lpe_service_exe }}'
+      $displayName = '{{ ews_lpe_service_display_name }}'
+      & sc.exe create $svcName binPath= C:\Windows\System32\cmd.exe start= auto obj= LocalSystem DisplayName= $displayName | Out-Null
+      if ($LASTEXITCODE -ne 0) { throw "sc.exe create failed with exit code $LASTEXITCODE" }
+      Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$svcName" -Name ImagePath -Value $imagePath
+      $Ansible.Changed = $true
   when:
     - not ansible_check_mode
     - ews_lpe_sc_query.rc != 0
@@ -172,6 +176,9 @@
           $Ansible.Changed = $false
       }
   when: not ansible_check_mode
+
+- ansible.builtin.import_tasks: recovery.yml
+  tags: [ews_lpe_service, ews_lpe_reset, privesc, ews_lpe_recovery]
 
 - name: Assert service ImagePath is unquoted and contains a space
   ansible.windows.win_powershell:

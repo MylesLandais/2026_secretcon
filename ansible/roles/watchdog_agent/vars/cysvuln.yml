@@ -1,0 +1,18 @@
+---
+watchdog_service_name: fswsService
+watchdog_watch_paths:
+  - 'C:\Program Files\EFS'
+watchdog_allowed_files:
+  - fsws.exe
+  - fswsService.exe
+watchdog_kill_process_names:
+  - fsws
+  - fswsService
+watchdog_health_interval_sec: 15
+watchdog_tcp_probe:
+  host: 127.0.0.1
+  port: 80
+watchdog_http_probe:
+  url: 'http://127.0.0.1/'
+  banner_needle: Easy File Sharing
+  timeout_sec: 8

@@ -1,0 +1,12 @@
+---
+watchdog_install_dir: 'C:\secretcon'
+watchdog_binary_path: "{{ watchdog_install_dir }}\\secretcon-watchdog.exe"
+watchdog_config_path: "{{ watchdog_install_dir }}\\watchdog-config.json"
+watchdog_supervisor_task_name: SecretCon-Watchdog-Supervisor
+watchdog_supervisor_task_xml_path: "{{ watchdog_install_dir }}\\watchdog-supervisor-task.xml"
+watchdog_supervisor_interval_minutes: 1
+watchdog_run_install_on_deploy: true
+watchdog_run_supervisor_now: true
+
+# Profile: ews | cysvuln (override in playbook or group_vars)
+watchdog_profile: ews

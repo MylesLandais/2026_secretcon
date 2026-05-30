@@ -112,6 +112,12 @@ docker cp "${STACK_DIR}/config/wazuh_cluster/local_rules.xml" \
 docker exec -u root "${WAZUH_MANAGER_CONTAINER}" chown wazuh:wazuh /var/ossec/etc/rules/local_rules.xml
 docker exec -u root "${WAZUH_MANAGER_CONTAINER}" chmod 0660 /var/ossec/etc/rules/local_rules.xml
 
+echo "[*] Syncing custom-ops-queue integration"
+docker cp "${STACK_DIR}/integrations/custom-ops-queue" \
+    "${WAZUH_MANAGER_CONTAINER}:/var/ossec/integrations/custom-ops-queue"
+docker exec -u root "${WAZUH_MANAGER_CONTAINER}" chmod 750 /var/ossec/integrations/custom-ops-queue
+docker exec -u root "${WAZUH_MANAGER_CONTAINER}" chown root:wazuh /var/ossec/integrations/custom-ops-queue
+
 docker exec "${WAZUH_MANAGER_CONTAINER}" /var/ossec/bin/wazuh-control restart >/dev/null
 
 echo "[+] Wazuh local-lab stack ready"

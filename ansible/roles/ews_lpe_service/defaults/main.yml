@@ -11,3 +11,8 @@ ews_lpe_service_description: Synchronizes engineering workstation telemetry with
 
 # Writable by BUILTIN\Users on the parent path only (unquoted path primitive).
 ews_lpe_users_modify_path: "{{ ews_lpe_service_root }}"
+
+# SCM failure recovery (availability — does not quote ImagePath).
+ews_lpe_configure_failure_recovery: true
+ews_lpe_failure_reset_seconds: 86400
+ews_lpe_failure_actions: restart/5000/restart/10000/restart/30000

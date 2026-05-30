@@ -1,39 +1,25 @@
 ---
 # Controller-side assertions before touching the guest.
 
-- name: Stat vendored VNC wordlist on controller
-  ansible.builtin.stat:
-    path: "{{ ultravnc_wordlist_path }}"
-  delegate_to: localhost
+- name: Load vendored VNC wordlist from controller
+  ansible.builtin.set_fact:
+    ultravnc_wordlist_raw: "{{ lookup('ansible.builtin.file', ultravnc_wordlist_path) }}"
   run_once: true
-  register: ultravnc_wordlist_stat
-  vars:
-    ansible_connection: local
 
-- name: Require vendored VNC wordlist
+- name: Require vendored VNC wordlist content
   ansible.builtin.assert:
     that:
-      - ultravnc_wordlist_stat.stat.exists
-      - ultravnc_wordlist_stat.stat.isreg
+      - ultravnc_wordlist_raw | length > 0
     fail_msg: >-
       Missing wordlist at {{ ultravnc_wordlist_path }}.
       See provisioning/wordlists/readme.md.
   run_once: true
 
-- name: Load vendored VNC wordlist lines
-  ansible.builtin.slurp:
-    src: "{{ ultravnc_wordlist_path }}"
-  delegate_to: localhost
-  run_once: true
-  register: ultravnc_wordlist_slurp
-  vars:
-    ansible_connection: local
-
 - name: Parse wordlist entries
   ansible.builtin.set_fact:
     ultravnc_wordlist_entries: >-
       {{
-        (ultravnc_wordlist_slurp.content | b64decode).splitlines()
+        ultravnc_wordlist_raw.splitlines()
         | map('trim')
         | reject('equalto', '')
         | reject('match', '^#')

@@ -57,6 +57,8 @@ services:
       - ./config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
       - ./config/wazuh_cluster/local_rules.xml:/var/ossec/etc/rules/local_rules.xml
       - ./config/wazuh_cluster/shared/ews:/wazuh-config-mount/etc/shared/ews
+      - ./config/wazuh_cluster/shared/cysvuln:/wazuh-config-mount/etc/shared/cysvuln
+      - ./integrations/custom-ops-queue:/var/ossec/integrations/custom-ops-queue
 
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.14.5

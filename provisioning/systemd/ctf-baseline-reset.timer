@@ -1,0 +1,10 @@
+[Unit]
+Description=SecretCon CTF baseline reset every 2h during active play
+
+[Timer]
+OnCalendar=*-*-* 00/2:00:00
+Persistent=true
+Unit=ctf-baseline-reset.service
+
+[Install]
+WantedBy=timers.target

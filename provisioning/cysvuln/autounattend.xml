@@ -79,6 +79,26 @@
           <Path>cmd /c reg add "HKLM\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff" /f</Path>
           <Description>Suppress Networks discovery prompt</Description>
         </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>cmd /c reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" /v NoAutoUpdate /t REG_DWORD /d 1 /f</Path>
+          <Description>Disable Windows Update auto-check</Description>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>cmd /c reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" /v DoNotConnectToWindowsUpdateInternetLocations /t REG_DWORD /d 1 /f</Path>
+          <Description>Block WU online location lookups</Description>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>cmd /c reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" /v SetDisableUXWUAccess /t REG_DWORD /d 1 /f</Path>
+          <Description>Suppress Settings update UX / Get updates overlay</Description>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Path>cmd /c reg add "HKLM\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f</Path>
+          <Description>Suppress Server Manager auto-launch (machine scope)</Description>
+        </RunSynchronousCommand>
       </RunSynchronous>
     </component>
   </settings>
@@ -134,6 +154,21 @@
         <SynchronousCommand wcm:action="add">
           <Order>2</Order>
           <CommandLine>cmd /c for %i in (D E F G H I J K) do @if exist %i:\setup-openssh.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File %i:\setup-openssh.ps1</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <CommandLine>cmd /c reg add "HKCU\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f</CommandLine>
+          <Description>Suppress Server Manager for first-logon user</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <CommandLine>cmd /c reg add "HKCU\SOFTWARE\Microsoft\ServerManager\Roles" /v RefreshFrequency /t REG_SZ /d "00:00:00" /f</CommandLine>
+          <Description>Stop Server Manager refresh polling</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Set-Service wuauserv -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service UsoSvc -Force -ErrorAction SilentlyContinue; Set-Service UsoSvc -StartupType Disabled -ErrorAction SilentlyContinue"</CommandLine>
+          <Description>Disable Windows Update services at first logon</Description>
         </SynchronousCommand>
       </FirstLogonCommands>
     </component>

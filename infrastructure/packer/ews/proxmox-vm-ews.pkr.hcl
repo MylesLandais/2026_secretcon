@@ -120,7 +120,7 @@ build {
     use_proxy          = false
     extra_arguments = [
       "--extra-vars",
-      "ansible_shell_type=powershell wazuh_manager=192.168.61.10",
+      "ansible_shell_type=powershell wazuh_manager=192.168.61.10 secretcon_packer_build=true",
     ]
   }
 

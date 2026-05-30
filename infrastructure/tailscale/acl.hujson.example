@@ -1,0 +1,22 @@
+// Example Tailscale ACL — test player isolated to one challenge host.
+// https://tailscale.com/kb/1018/acls
+{
+  "groups": {
+    "group:secretcon-players": ["player-test@secretcon.local"],
+  },
+  "tagOwners": {
+    "tag:player-test": ["autogroup:admin"],
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["group:secretcon-players"],
+      "dst": ["192.168.61.20/32:*"],
+    },
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["*:*"],
+    },
+  ],
+}

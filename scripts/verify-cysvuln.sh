@@ -83,9 +83,19 @@ USER_FLAG=$(winrm_admin "if (Test-Path 'C:\\Users\\User_Joe\\Desktop\\user.txt')
 ROOT_FLAG=$(winrm_admin "if (Test-Path 'C:\\Users\\Administrator\\Desktop\\root.txt') { Get-Content 'C:\\Users\\Administrator\\Desktop\\root.txt' } else { 'MISSING' }" | tr -d '\r\n')
 [[ "$ROOT_FLAG" != "MISSING" && -n "$ROOT_FLAG" ]] && check "root-flag-present" PASS "$ROOT_FLAG" || check "root-flag-present" FAIL ""
 
-# Service / firewall — informational, not gating (fswsService is out of scope for some builds).
+# Service / firewall — gating for competition availability.
 FSWS=$(winrm_admin "(Get-Service fswsService -EA SilentlyContinue).Status" | tr -d '\r\n ')
-[ -n "$FSWS" ] && check "fswsService-info" PASS "$FSWS (informational)" || check "fswsService-info" PASS "absent (informational)"
+[ "$FSWS" = "Running" ] && check "fswsService-running" PASS "$FSWS" || check "fswsService-running" FAIL "got '${FSWS:-absent}'"
+
+HTTP_PORT="${CYSVULN_HTTP_PORT:-80}"
+if [ "$TARGET" = "127.0.0.1" ] && [ "${WINRM_PORT}" = "15985" ]; then
+    HTTP_PORT="${CYSVULN_HTTP_PORT:-18080}"
+fi
+if curl -sf --max-time 8 -I "http://${TARGET}:${HTTP_PORT}/" 2>/dev/null | grep -qi 'Easy File Sharing'; then
+    check "efs-http-banner" PASS "http://${TARGET}:${HTTP_PORT}/"
+else
+    check "efs-http-banner" FAIL "no EFS banner on :${HTTP_PORT}"
+fi
 
 # Wazuh manager-side: agent enrolled and active?
 # shellcheck source=lib/check-wazuh-agent.sh

@@ -1,28 +1,32 @@
 ---
 # Live RFB VncAuth check from the controller (fast retries, no guest sleeps).
+# Uses lookup('pipe') so Packer/WINDOWS inventory never routes module execution via PowerShell on localhost.
 
 - name: Flush handlers so winvnc has restarted before auth probe
   ansible.builtin.meta: flush_handlers
 
 - name: Verify live VNC accepts the planted password over RFB
-  ansible.builtin.command:
-    argv:
-      - python3
-      - "{{ role_path }}/files/check_vnc_auth.py"
-      - --host
-      - "{{ ansible_host }}"
-      - --port
-      - "{{ ultravnc_listen_port | string }}"
-      - --password
-      - "{{ ultravnc_password }}"
-      - --cred-tool
-      - "{{ ultravnc_cred_tool_path }}"
-  delegate_to: localhost
+  ansible.builtin.set_fact:
+    ultravnc_auth_probe_msg: >-
+      {{
+        lookup(
+          'ansible.builtin.pipe',
+          (ansible_playbook_python | quote)
+          ~ ' '
+          ~ (role_path ~ '/files/check_vnc_auth.py' | quote)
+          ~ ' --host '
+          ~ (ultravnc_rfb_probe_host | quote)
+          ~ ' --port '
+          ~ (ultravnc_listen_port | string | quote)
+          ~ ' --password '
+          ~ (ultravnc_password | quote)
+          ~ ' --cred-tool '
+          ~ (ultravnc_cred_tool_path | quote)
+        )
+      }}
   register: ultravnc_auth_verify
   changed_when: false
-  until: ultravnc_auth_verify.rc == 0
+  until: ultravnc_auth_verify is succeeded
   retries: 8
   delay: 2
-  when: not ansible_check_mode
-  vars:
-    ansible_connection: local
+  when: not ansible_check_mode and not (secretcon_packer_build | default(false) | bool)

@@ -1,0 +1,13 @@
+# NixOS snippet: cerberus-nix as Tailscale subnet router for challenge VLAN.
+# Merge into host config when tailnet is available.
+{ config, ... }:
+{
+  services.tailscale = {
+    enable = true;
+    extraUpFlags = [
+      "--advertise-routes=192.168.61.0/24"
+      "--accept-routes=false"
+    ];
+  };
+  networking.firewall.trustedInterfaces = [ "tailscale0" ];
+}

@@ -9,7 +9,7 @@ wazuh_agent_version: "4.14.5"
 # provisioning/powershell/lib/SecretCon.Bootstrap.psm1::Install-SecretConSysmon.
 # Update this and that fallback in lockstep, or move both behind a single
 # source-of-truth file in step 4 of the migration order.
-sysmon_config_sha256: "747fe516fb5319962106081ae2ce30f769ad2e4e99db7120ccda726c290b12eb"
+sysmon_config_sha256: "3913586d252d9a32319feb33e3715d3160a29476c480a807fd5a7992136504b4"
 
 # Campaign misconfig: shared local Administrator password (PtH pivot EWS <-> CysVuln).
 # Maps bootstrap_win.ps1 / bootstrap_cysvuln.ps1 (ews-004, cyv-004).
@@ -18,3 +18,7 @@ secretcon_shared_local_admin_password: "{{ lookup('env', 'SECRETCON_SHARED_LOCAL
 # Flag placeholders — override via .env / Packer for real campaigns.
 secretcon_user_flag: "{{ lookup('env', 'SECRETCON_USER_FLAG') | default('crit-low-priv-patrick', true) }}"
 secretcon_root_flag: "{{ lookup('env', 'SECRETCON_ROOT_FLAG') | default('crit-root-system-privs', true) }}"
+
+# Packer Ansible provisioner sets secretcon_packer_build=true. Skips live RFB
+# verify during bake (slirp timing); run hot-patch / converge day-2 instead.
+secretcon_packer_build: false

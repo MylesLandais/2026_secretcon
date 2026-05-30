@@ -21,6 +21,10 @@
       tags: [sysmon, telemetry]
     - role: wazuh_agent
       tags: [wazuh_agent, telemetry]
+    - role: watchdog_agent
+      vars:
+        watchdog_profile: cysvuln
+      tags: [watchdog_agent, cysvuln_efs_watchdog, cysvuln_efs_recovery]
 
   tasks:
     - name: Reapply Wazuh agent MSI with cysvuln group (fixes ews-group enroll drift)

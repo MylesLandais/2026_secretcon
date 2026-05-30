@@ -22,6 +22,7 @@ tightvnc_log_path: 'C:\ProgramData\TightVNC\tvnserver.log'
 tightvnc_firewall_rule_name: SecretCon-TightVNC-In-TCP
 tightvnc_firewall_rule_display_name: SecretCon TightVNC Server
 tightvnc_listen_port: 5900
+tightvnc_rfb_probe_host: "{{ '10.0.2.15' if ansible_host in ['127.0.0.1', 'localhost'] else ansible_host }}"
 
 # Player foothold: VNC password only (no separate control-password prompt).
 tightvnc_use_control_authentication: 0
